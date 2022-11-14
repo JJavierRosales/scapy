@@ -12,6 +12,7 @@ import pandas as pd
 import warnings
 import scipy.stats as st
 import os
+import requests
 from pathlib import Path
 from matplotlib import rc, pyplot as plt
 
@@ -24,50 +25,41 @@ import general as gn
 #%%
 # Initialize global variables for paths
 
-root_path = str(Path(os.getcwd()).parents[0])
-root_path_images = os.path.join(root_path, 'images')
-root_path_data = os.path.join(root_path, 'data')
+cwd         = str(Path(os.getcwd()).parents[0])
+cwd_images  = os.path.join(cwd, 'images')
+cwd_data    = os.path.join(cwd, 'data')
 
 #%%
 # Create models from data
-def best_fit_distribution(data, bins=200):
+def best_fit_distribution(data, bins=200, exclude=[]):
     """Model data by finding best fit distribution to data"""
     # Get histogram of original data
     y, x = np.histogram(data, bins=bins, density=True)
     x = (x + np.roll(x, -1))[:-1] / 2.0
-
-    # Distributions to check
-    distributions_list = [        
-        st.alpha,st.anglit,st.arcsine,st.beta,st.betaprime,st.bradford,st.burr,
-        st.cauchy,st.chi,st.chi2,st.cosine,st.dgamma,st.dweibull,st.erlang,
-        st.expon,st.exponnorm,st.exponweib,st.exponpow,st.f,st.fatiguelife,
-        st.fisk,st.foldcauchy,st.foldnorm,
-        st.genlogistic,st.genpareto,st.gennorm,st.genexpon,st.genextreme,
-        st.gausshyper,st.gamma,st.gengamma,st.genhalflogistic,st.gilbrat,
-        st.gompertz,st.gumbel_r,st.gumbel_l,st.halfcauchy,st.halflogistic,
-        st.halfnorm,st.halfgennorm,st.hypsecant,st.invgamma,st.invgauss,
-        st.invweibull,st.johnsonsb,st.johnsonsu,st.ksone,st.kstwobign,
-        st.laplace,st.levy,st.levy_l,st.logistic,st.loggamma,st.loglaplace,
-        st.lognorm,st.lomax,st.maxwell,st.mielke,st.nakagami,st.norm,st.pareto,
-        st.pearson3,st.powerlaw,st.powerlognorm,st.powernorm,st.rdist,
-        st.reciprocal,st.rayleigh,st.rice,st.recipinvgauss,st.semicircular,
-        st.t,st.triang,st.truncexpon,st.truncnorm,st.tukeylambda,st.uniform,
-        st.vonmises,st.vonmises_line,st.wald,st.weibull_min,st.weibull_max,
-        st.wrapcauchy#,st.ncx2,st.ncf,st.nct,st.levy_stable,st.frechet_r,st.frechet_l
-    ]
-
+    
+    # Get Continuous distributions table from SciPy website.
+    url = 'https://docs.scipy.org/doc/scipy/reference/stats.html'
+    dist_table = pd.read_html(requests.get(url).content)[1]
+    
+    # Evaluate list of objects in str format to convert it into a Python list
+    dist_list = eval('[' + (', ').join('st.' + dist_table[0]) + ']')
+    
     # Best holders
-    best_distribution = st.norm
-    best_params = (0.0, 1.0)
-    best_sse = np.inf
+    best = {'dist': st.norm,
+            'params': (0.0, 1.0),
+            'sse': np.inf}
+    
+    dists_checked = []
 
     # Estimate distribution parameters from data
-    for i in range(len(distributions_list)):
+    for i, dist in enumerate(dist_list):
         
-        distribution = distributions_list[i]
         
-        print("Progress", round((i+1)/len(distributions_list)*100,2), 
-              "%   \tDistribution:", distribution.name)
+        print('Progress %5.1f%% (%3d/%3d) \tDistribution: %16s \tBest: %s' %
+              ((i+1)/len(dist_list)*100, i, len(dist_list)-1, dist.name, 
+               best['dist'].name))
+        
+        if dist.name in exclude: continue
         
         # Try to fit the distribution
         try:
@@ -76,7 +68,7 @@ def best_fit_distribution(data, bins=200):
                 warnings.filterwarnings("ignore")
 
                 # fit dist to data
-                params = distribution.fit(data)
+                params = dist.fit(data)
 
                 # Separate parts of parameters
                 arg = params[:-2]
@@ -84,20 +76,22 @@ def best_fit_distribution(data, bins=200):
                 scale = params[-1]
 
                 # Calculate fitted PDF and error with fit in distribution
-                pdf = distribution.pdf(x, loc=loc, scale=scale, *arg)
+                pdf = dist.pdf(x, loc=loc, scale=scale, *arg)
                 sse = np.sum(np.power(y - pdf, 2.0))
 
                 # identify if this distribution is better
-                if best_sse > sse > 0:
-                    best_distribution = distribution
-                    best_params = params
-                    best_sse = sse
+                if best['sse'] > sse > 0:
+                    best['dist']= dist
+                    best['params'] = params
+                    best['sse'] = sse
 
         except Exception:
             pass
         
-    print("Minimum error:", best_sse)
-    return (best_distribution.name, best_params)
+        dists_checked.append(dist.name)
+        
+    print("\nMinimum error: %1.3e" % best['sse'])
+    return (best['dist'].name, best['params'])
 
 #%%
 def make_pdf(dist, params, size=10000):
@@ -147,37 +141,44 @@ if __name__ == "__main__":
     column = "miss_distance"
     
     # Import Kelvins data
-    df = pd.read_csv(os.path.join(root_path_data, 
+    df = pd.read_csv(os.path.join(cwd_data, 
                                   'esa-challenge',
                                   'train_data.csv'), 
                      sep=',', header=0, index_col=None, skipinitialspace=False)
+    
+    # Sort values of dataframe by event_id and time_to_tca and re-index
+    df.sort_values(by=['event_id', 'time_to_tca'], axis='index', 
+                   ascending=[True,False], inplace=True, ignore_index=True)
+
+    # Get only last CDM data from every event_id
+    df = df.drop_duplicates('event_id', keep='last')
     
     data = gn.remove_outliers(df[column], 1.5)
     
 
     # Find best fit distribution
-    best_fit_name, best_fit_params = best_fit_distribution(data, 200)
-    best_dist = getattr(st, best_fit_name)
+    dist_name, dist_params = best_fit_distribution(data, 200, ['studentized_range'])
+    dist = getattr(st, dist_name)
     
     # Get information of the parameters
-    param_names = (best_dist.shapes + ", loc, scale").split(", ") \
-        if best_dist.shapes else ["loc", "scale"]
+    param_names = (dist.shapes + ", loc, scale").split(", ") \
+        if dist.shapes else ["loc", "scale"]
     param_str = "\quad ".join(["{}={:0.5f}".format(k,v) \
-                               for k,v in zip(param_names, best_fit_params)])
+                               for k,v in zip(param_names, dist_params)])
 
-    print("Best distribution:", best_dist.name)
-    for k,v in zip(param_names, best_fit_params): print(k,"=", v)
+    print("Best distribution:", dist.name)
+    for k,v in zip(param_names, dist_params): print(k,"=", v)
         
     # Make PDF with best params 
-    pdf = make_pdf(best_dist, best_fit_params)
+    pdf = make_pdf(dist, dist_params)
     
-    figurename = column + "_" + best_fit_name + ".pdf"
+    figurename = column + "_" + dist_name + ".pdf"
     
     # Display  plot
     plt.figure(figsize=(7,5))
 
     ax = pdf.plot(lw=1.5, color = "orange", 
-                  label=best_fit_name.capitalize() +" PDF")
+                  label=dist_name.capitalize() +" PDF")
     data.plot(kind="hist", bins=n_bins, ax=ax, 
               density=True, label="Kelvins data", color="dimgrey")
     
@@ -186,7 +187,7 @@ if __name__ == "__main__":
     plt.ylabel(r"Probability density")
     plt.grid(True, linestyle="dashed", alpha=0.5)
     plt.legend(loc="best")
-    plt.savefig(os.path.join(root_path_images, 
+    plt.savefig(os.path.join(cwd_images, 
                              'probability-density', 
                              figurename),
                 bbox_inches="tight")
