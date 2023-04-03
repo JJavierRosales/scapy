@@ -53,6 +53,36 @@ def order_of_magnitude(value: float) -> int:
     
     return int(math.floor(math.log(abs(value), 10)))
 #%%
+def round_by_mo(value:float, abs_method:str='ceil', **kwargs) -> float:
+    """Round up/down float by specifying rounding of magnitude.
+
+    Args:
+        value (float): Value to round up/down.
+        abs_method (str, optional): Method to round considering the absolute value (up or down). Defaults to 'ceil'.
+
+    Returns:
+        float: Value rounded.
+    """
+
+
+    # Return None if method is not valid
+    if not abs_method in ['ceil', 'floor']: return None
+    
+    # Return 0 if value is 0
+    if value==0: return 0
+
+    # Compute order of magnitude
+    om = 10**kwargs.get('rounding_om', order_of_magnitude(value))
+    
+    # Initialize dictionary with round methods
+    methods = {'ceil':math.ceil, 'floor':math.floor}
+
+    # Invert method if value is negative
+    if value<0: rounding_method = methods[['ceil', 'floor'].remove(abs_method)[0]]
+
+    return rounding_method(value/om)*om
+
+#%%
 def outliers_boundaries(data: np.ndarray, threshold:float = 1.5, positive_only:bool=False) -> tuple:
     """Compute limits of standard data within a given data distribution.
 
