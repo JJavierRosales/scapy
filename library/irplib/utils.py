@@ -25,14 +25,14 @@ def nbins(data: np.ndarray, rule:str = 'fd') -> dict:
     if not rule in ['sturge', 'scott', 'rice', 'fd']: return None
 
     # Get the number of items within the dataset
-    data = data[~np.isnan(data)]
+    data = data.astype(np.float64)
     n = len(data)
     
     # Compute the histogram bins size (range)
     bins_width = {'sturge': 1 + 3.322*np.log(n),    
-                 'scott': 3.49*np.std(data)*n**(-1/3),                       
-                 'rice': 2*n**(1/3),                         
-                 'fd': 2*st.iqr(data)*n**(-1/3)}
+                 'scott': 3.49*np.std(data)*n**(-1.0/3.0),                       
+                 'rice': 2*n**(1.0/3.0),                         
+                 'fd': 2*st.iqr(data)*n**(-1.0/3.0)}
     
     # Compute number of bins
     n_bins =  math.ceil((data.max() - data.min())/bins_width[rule])
@@ -78,9 +78,9 @@ def round_by_mo(value:float, abs_method:str='ceil', **kwargs) -> float:
     methods = {'ceil':math.ceil, 'floor':math.floor}
 
     # Invert method if value is negative
-    if value<0: rounding_method = methods[['ceil', 'floor'].remove(abs_method)[0]]
+    if value<0: abs_method = 'floor' if abs_method=='ceil' else 'ceil'
 
-    return rounding_method(value/om)*om
+    return methods[abs_method](value/om)*om
 
 #%%
 def outliers_boundaries(data: np.ndarray, threshold:float = 1.5, positive_only:bool=False) -> tuple:
@@ -94,9 +94,6 @@ def outliers_boundaries(data: np.ndarray, threshold:float = 1.5, positive_only:b
     Returns:
         tuple: Range of values between which satandard data is comprised.
     """
-    
-    # Remove NaN from data
-    data = data[~np.isnan(data)]
     
     Q1 = np.quantile(data,0.25)
     Q3 = np.quantile(data,0.75)
@@ -121,7 +118,7 @@ def compute_vif(df_input: pd.DataFrame) -> dict:
     data = df_input.copy(deep=True).dropna()
     
     # Get the features and model object
-    features = list(data.columns)
+    features = [feature for feature in data.columns if not data[feature].dtype in ['category', 'str']]
     model = LinearRegression()
     
     # Create empty dataset with 0s

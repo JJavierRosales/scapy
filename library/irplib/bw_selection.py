@@ -1,7 +1,7 @@
 # Import Scikit-learn required libraries
 from sklearn.neighbors import KernelDensity
 import matplotlib.pyplot as plt
-from .main import nbins, order_of_magnitude
+from . import utils 
 import numpy as np
 
 #%%
@@ -43,7 +43,7 @@ def plot_kde(data:np.ndarray, bandwidths:np.ndarray, **kwargs) -> None:
     
     # Plot the histogram and pdf
     plt.figure(figsize = kwargs.get('figsize',(6, 3)) )
-    plt.hist(data, bins = kwargs.get('bins', nbins(data)['n']), 
+    plt.hist(data, bins = kwargs.get('bins', utils.nbins(data)['n']), 
             density=True, ec='white', label='Actual')
     
     # Iterate over all bandwidths and plot
@@ -62,7 +62,7 @@ def plot_kde(data:np.ndarray, bandwidths:np.ndarray, **kwargs) -> None:
         probabilities = np.exp(model.score_samples(values))
 
         if len(labels)<b+1:
-            labels.append(f'bw = {bw:.4f}' if  order_of_magnitude(bw)>-4 else f'bw = {bw:.3e}')
+            labels.append(f'bw = {bw:.4f}' if  utils.order_of_magnitude(bw)>-4 else f'bw = {bw:.3e}')
 
         plt.plot(values, probabilities, label=labels[b])
 

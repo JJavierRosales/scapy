@@ -6,7 +6,9 @@ import time
 import scipy.stats as st
 import numpy as np
 import warnings
-from .utils import outliers_boundaries
+import matplotlib.pyplot as plt
+
+from . import utils
 
 from sklearn.metrics import r2_score
 
@@ -127,7 +129,7 @@ class FitScipyDistribution:
         arg, loc, scale = self.params['arg_values'], self.params['loc'], self.params['scale']
         
         # Get standard data limits for better representation
-        std_lims = outliers_boundaries(self.data, threshold = 1.5, positive_only=False)
+        std_lims = utils.outliers_boundaries(self.data, threshold = 1.5, positive_only=False)
         
         # Build PDF and turn into pandas Series
         x = np.linspace(std_lims[0], std_lims[1], size)
@@ -230,3 +232,120 @@ def find_best_distribution(data: pd.Series, scipy_distributions:list):
     # clear_output(wait=True)
     
     return best_stdist, ranking
+
+#%%
+def plot_histogram(df_input:pd.DataFrame, features:list, bins_rule:str='fd', **kwargs) -> None:
+    """Plot custom histogram for dataframe features. 
+
+    Args:
+        df_input (pd.DataFrame): Pandas dataframe to plot.
+        features (list): Features from pandas dataframe to plot.
+        bins_rule (str): Rule to compute number of histogram bins. Defaults to 'fd'.
+
+    Returns:
+        None
+    """
+
+    # Check that all features are categorical or numerical
+    if 'str' in df_input[features].dtypes.values: return None 
+    if len(np.unique(df_input[features].dtypes.values)) > 1: return None
+
+    # Normalize data if passed as argument
+    data = []
+    for f, feature in enumerate(features):
+        data.append(df_input[feature].to_numpy())
+        data[-1] = data[-1][~pd.isnull(data[-1])]
+
+    all_data = df_input[features].to_numpy().flatten()
+    all_data = all_data[~pd.isnull(all_data)]
+
+    # Create figure object
+    plt.figure(figsize=kwargs.get('figsize', (8,3)))
+    
+    axes = plt.gca()
+
+    # Get kwargs specific for the plot
+    plt_kwargs = dict(edgecolor='white', align='mid', alpha=1.0, rwidth=1.0)
+    plt_kwargs.update(kwargs.get('plt_kwargs',dict()))
+
+    if not 'category' in df_input[features].dtypes.values:
+        # Compute number of outliers for better representation on histogram
+
+        std_lims = utils.outliers_boundaries(all_data, threshold = 1.5, positive_only=np.sum(all_data<0)==0)
+
+        # Identify outliers
+        outliers = (all_data<std_lims[0]) | (all_data>std_lims[1])
+
+        # Compute new X-axis limits for a better plot representation.
+        xlim = kwargs.get('xlim', (utils.round_by_mo(max(std_lims[0], all_data.min()), abs_method='floor'), 
+                                utils.round_by_mo(min(std_lims[1], all_data.max()), abs_method='ceil')))
+        plt.xlim(xlim)
+        plt_kwargs.update(dict(range=xlim))
+
+        # Calculate number of bins to plot histogram 
+        bins = utils.nbins(all_data[~outliers], bins_rule)['n']
+
+        om = max(utils.order_of_magnitude(all_data.min()), utils.order_of_magnitude(all_data.max()))
+        om = '{:.3e}' if om>=5 else '{:.3f}'
+        
+        text = df_to_latex(pd.DataFrame(data=df_input[features]).describe(percentiles=[0.05, 0.25, 0.5, 0.75, 0.95]).applymap(om.format))
+
+    else:
+        # Calculate number of bins to plot histogram
+        bins = len(df_input[features[0]].cat.categories.values)
+
+        text = df_to_latex(pd.DataFrame(data=df_input[features]).describe())
+
+    # Print statistical summary before the histogram
+    if kwargs.get('describe', False): 
+        t = axes.text(1.04, 0.5, text, size=10, ha='left', va='center', c='black', transform=axes.transAxes, 
+                  bbox=dict(facecolor='white', edgecolor='black', alpha=0.75, pad=5))
+
+    # Plot histogram
+    plt.hist(data, bins=bins, **plt_kwargs)
+    
+    # Compute new Y-axis limits for a better plot representation.
+    ylim = kwargs.get('ylim',(axes.get_ylim()[0], utils.round_by_mo(axes.get_ylim()[1], abs_method='ceil')))
+    plt.yticks(np.linspace(ylim[0],ylim[1],5))
+    plt.ylim(ylim)
+
+    # Set axis labels and title
+    xlabel = kwargs.get('xlabel', r' '.join(features))
+    ylabel = kwargs.get('ylabel', r'Number of objects')
+    title  = kwargs.get('title',  r'Histogram')
+    
+    plt.ylabel(ylabel=ylabel, fontsize=12) 
+    plt.xlabel(xlabel=xlabel, fontsize=12)
+    plt.title(label=title,   fontsize=12)
+    
+    # Plot legend and print plot
+    if kwargs.get('legend', True): plt.legend(loc='upper right', fontsize=10)
+    plt.grid(True, linestyle='--')
+    plt.show()
+    
+    return None
+
+#%%
+def df_to_latex(df: pd.DataFrame, column_format:str='c') -> str:
+    """Convert pandas DataFrame to latex table.
+
+    Args:
+        df (pd.DataFrame): DataFrame to convert to LaTeX format.
+        column_format (str, optional): Columns alignment (left 'l', center 'c', or right 'r'). Defaults to 'c'.
+
+    Returns:
+        str: DataFrame in string format.
+    """
+
+    column_format = 'c'*(len(df.columns)+1) if column_format=='c' else column_format
+
+    new_column_names = dict(zip(df.columns, ["\textbf{" + c + "}" for c in df.columns]))
+    
+    df.rename(new_column_names, axis='columns', inplace=True)
+    
+    table = df.style.to_latex(column_format=column_format)
+    table = table.replace('\n', '').encode('unicode-escape').decode()\
+            .replace('%', '\\%').replace('\\\\', '\\') \
+            .replace('\\\\count', '\\\\\\hline count')
+        
+    return table
