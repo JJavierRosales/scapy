@@ -266,7 +266,7 @@ def plot_histogram(df_input:pd.DataFrame, features:list, bins_rule:str='fd', **k
 
     # Get kwargs specific for the plot
     plt_kwargs = dict(edgecolor='white', align='mid', alpha=1.0, rwidth=1.0)
-    plt_kwargs.update(kwargs.get('plt_kwargs',dict()))
+    # plt_kwargs.update(kwargs.get('plt_kwargs',dict()))
 
     if not 'category' in df_input[features].dtypes.values:
         # Compute number of outliers for better representation on histogram
@@ -283,7 +283,7 @@ def plot_histogram(df_input:pd.DataFrame, features:list, bins_rule:str='fd', **k
         plt_kwargs.update(dict(range=xlim))
 
         # Calculate number of bins to plot histogram 
-        bins = utils.nbins(all_data[~outliers], bins_rule)['n']
+        bins = kwargs.get('bins', utils.nbins(all_data[~outliers], bins_rule)['n'])
 
         om = max(utils.order_of_magnitude(all_data.min()), utils.order_of_magnitude(all_data.max()))
         om = '{:.3e}' if om>=5 else '{:.3f}'
@@ -297,12 +297,17 @@ def plot_histogram(df_input:pd.DataFrame, features:list, bins_rule:str='fd', **k
         text = df_to_latex(pd.DataFrame(data=df_input[features]).describe())
 
     # Print statistical summary before the histogram
-    if kwargs.get('describe', False): 
+    if kwargs.get('describe', True): 
         t = axes.text(1.04, 0.5, text, size=10, ha='left', va='center', c='black', transform=axes.transAxes, 
                   bbox=dict(facecolor='white', edgecolor='black', alpha=0.75, pad=5))
 
     # Plot histogram
-    plt.hist(data, bins=bins, **plt_kwargs)
+    if 'hist_kwargs' in list(kwargs.keys()):
+        for f in range(len(features), 0, -1):
+            plt_kwargs.update(kwargs['hist_kwargs'][f-1])
+            plt.hist(data[f-1], bins=bins, **plt_kwargs)
+    else:
+        plt.hist(data, bins=bins, **plt_kwargs)
     
     # Compute new Y-axis limits for a better plot representation.
     ylim = kwargs.get('ylim',(axes.get_ylim()[0], utils.round_by_mo(axes.get_ylim()[1], abs_method='ceil')))
@@ -310,7 +315,7 @@ def plot_histogram(df_input:pd.DataFrame, features:list, bins_rule:str='fd', **k
     plt.ylim(ylim)
 
     # Set axis labels and title
-    xlabel = kwargs.get('xlabel', r' '.join(features))
+    xlabel = kwargs.get('xlabel', r'\texttt{' + " ".join(features) + '}')
     ylabel = kwargs.get('ylabel', r'Number of objects')
     title  = kwargs.get('title',  r'Histogram')
     
