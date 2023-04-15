@@ -20,10 +20,16 @@ from typing import Union
 #%%
 class FitScipyDistribution:
     def __init__(self, data, distribution):
+
+        # Instanciate distribution and distribution name
         self.dist = distribution
-        self.data = data[~np.isnan(data)]
         self.name = distribution.name
-        
+
+        # Convert data input to numpy array and keep only finites values to instanciate data
+        data = np.asarray(data, dtype=np.float64)
+        data = data[np.isfinite(data)]
+        self.data = data
+
         # Ignore warnings from data that can't be fit
         warnings.filterwarnings("ignore")
         
@@ -200,7 +206,7 @@ def find_best_distribution(data: pd.Series, scipy_distributions:list):
     """
     
     # Remove non-finite values and initialize best holder using the norm distribution
-    data = data[np.isfinite(data)]
+    data = data[data.notnull()]
     best_stdist = FitScipyDistribution(data, st.norm)
     
     fitting_results = []
@@ -213,10 +219,14 @@ def find_best_distribution(data: pd.Series, scipy_distributions:list):
 
         # clear_output(wait=True)
 
-        print('Progress %5.1f%% (%3d/%3d)  Best: %10s (R2: %0.2f)  Distribution: %10s (R2=%0.2f) \t' %
-              ((i+1)/len(scipy_distributions)*100, i, len(scipy_distributions)-1, 
-               best_stdist.name, best_stdist.r2_score(), 
-               fitted_stdist.name, fitted_stdist.r2_score()), end='\r')
+        print(f'Progress: {(i+1)/len(scipy_distributions)*100:3.1f}% ({i:3d}/{len(scipy_distributions)-1:3d})'
+              f' | Best dist. (R2={best_stdist.r2_score():.2f}) -> {best_stdist.name:22s}'
+              f' | New dist. (R2={fitted_stdist.r2_score():.2f}) -> {fitted_stdist.name:22s} ', end='\r')
+
+        #print('Progress %5.1f%% (%3d/%3d)  Best: %10s (R2: %0.2f)  Distribution: %10s (R2=%0.2f) \t' %
+        #      ((i+1)/len(scipy_distributions)*100, i, len(scipy_distributions)-1, 
+        #       best_stdist.name, best_stdist.r2_score(), 
+        #       fitted_stdist.name, fitted_stdist.r2_score()), end='\r')
         
         # If it improves the current best distribution, reassign best distribution
         if best_stdist.r2_score() < fitted_stdist.r2_score(): best_stdist = fitted_stdist
@@ -285,16 +295,19 @@ def plot_histogram(df_input:pd.DataFrame, features:list, bins_rule:str='fd', **k
         # Calculate number of bins to plot histogram 
         bins = kwargs.get('bins', utils.nbins(all_data[~outliers], bins_rule)['n'])
 
-        om = max(utils.order_of_magnitude(all_data.min()), utils.order_of_magnitude(all_data.max()))
-        om = '{:.3e}' if om>=5 else '{:.3f}'
-        
-        text = df_to_latex(pd.DataFrame(data=df_input[features]).describe(percentiles=[0.05, 0.25, 0.5, 0.75, 0.95]).applymap(om.format))
+        description_table = pd.DataFrame(data=df_input[features]).describe(percentiles=[0.05, 0.25, 0.5, 0.75, 0.95])
 
     else:
         # Calculate number of bins to plot histogram
         bins = len(df_input[features[0]].cat.categories.values)
 
-        text = df_to_latex(pd.DataFrame(data=df_input[features]).describe())
+        description_table = pd.DataFrame(data=df_input[features]).describe()
+
+
+    # Format values for the description table
+    values=[[utils.number2latex(element) for element in array] for array in description_table.to_numpy()]
+
+    text = utils.df2latex(pd.DataFrame(data=values, index=list(description_table.index), columns=[r'\texttt{' + feature + '}' for feature in features]))
 
     # Print statistical summary before the histogram
     if kwargs.get('describe', True): 
@@ -330,27 +343,3 @@ def plot_histogram(df_input:pd.DataFrame, features:list, bins_rule:str='fd', **k
     
     return None
 
-#%%
-def df_to_latex(df: pd.DataFrame, column_format:str='c') -> str:
-    """Convert pandas DataFrame to latex table.
-
-    Args:
-        df (pd.DataFrame): DataFrame to convert to LaTeX format.
-        column_format (str, optional): Columns alignment (left 'l', center 'c', or right 'r'). Defaults to 'c'.
-
-    Returns:
-        str: DataFrame in string format.
-    """
-
-    column_format = 'c'*(len(df.columns)+1) if column_format=='c' else column_format
-
-    new_column_names = dict(zip(df.columns, ["\textbf{" + c + "}" for c in df.columns]))
-    
-    df.rename(new_column_names, axis='columns', inplace=True)
-    
-    table = df.style.to_latex(column_format=column_format)
-    table = table.replace('\n', '').encode('unicode-escape').decode()\
-            .replace('%', '\\%').replace('\\\\', '\\') \
-            .replace('\\\\count', '\\\\\\hline count')
-        
-    return table
