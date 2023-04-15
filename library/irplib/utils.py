@@ -83,6 +83,59 @@ def round_by_mo(value:float, abs_method:str='ceil', **kwargs) -> float:
     return methods[abs_method](value/om)*om
 
 #%%
+#%%
+def df2latex(df: pd.DataFrame, column_format:str='c') -> str:
+    """Convert pandas DataFrame to latex table.
+
+    Args:
+        df (pd.DataFrame): DataFrame to convert to LaTeX format.
+        column_format (str, optional): Columns alignment (left 'l', center 'c', or right 'r'). Defaults to 'c'.
+
+    Returns:
+        str: DataFrame in string format.
+    """
+
+    column_format = 'c'*(len(df.columns)+1) if column_format=='c' else column_format
+
+    new_column_names = dict(zip(df.columns, ["\textbf{" + c + "}" for c in df.columns]))
+    
+    df.rename(new_column_names, axis='columns', inplace=True)
+    
+    table = df.style.to_latex(column_format=column_format)
+    table = table.replace('\n', '').encode('unicode-escape').decode()\
+            .replace('%', '\\%').replace('\\\\', '\\') \
+            .replace('\\\\count', '\\\\\\hline count')
+        
+    return table
+
+#%%
+def number2latex(value) -> str:
+    """Format a given value depending on its order of magnitude.
+
+    Args:
+        value: Value to format as a string.
+
+    Returns:
+        str: Return value with specific format.
+    """
+    # Check input is a number
+    if not (isinstance(value, int) or isinstance(value, float)): return value
+
+    # Instanciate function to get the order of magnitude
+    om = lambda x: order_of_magnitude(x)
+
+    if value%1==0 or isinstance(value, int):
+        # If integer, show no decimals
+        output = '{:d}'.format(int(value))
+    elif (om(value)>-2 and om(value)<5):
+        # If absolute value is in the range (0.01, 10000) show 3 decimals
+        output = '{:.3f}'.format(value)
+    elif om(value)>=5 or om(value)<=-2:
+        # If absolute value is in the range (0, 0.01] or [10000, inf) show scientific notation with 3 decimals
+        output = r'$' + '{:.3e}'.format(value).replace('e',r'\cdot10^{').replace('{+0','{').replace('{-0','{-') + r'}$'
+
+    return output
+#%%
 def outliers_boundaries(data: np.ndarray, threshold:float = 1.5, positive_only:bool=False) -> tuple:
     """Compute limits of standard data within a given data distribution.
 
