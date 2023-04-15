@@ -258,16 +258,14 @@ def plot_histogram(df_input:pd.DataFrame, features:list, bins_rule:str='fd', **k
 
     # Check that all features are categorical or numerical
     if 'str' in df_input[features].dtypes.values: return None 
-    if len(np.unique(df_input[features].dtypes.values)) > 1: return None
+    if len(np.unique([str(t) for t in list(df_input[features].dtypes)])) > 1: return None
 
     # Normalize data if passed as argument
     data = []
     for f, feature in enumerate(features):
-        data.append(df_input[feature].to_numpy())
-        data[-1] = data[-1][~pd.isnull(data[-1])]
+        data.append(df_input[feature].dropna().to_numpy())
 
-    all_data = df_input[features].to_numpy().flatten()
-    all_data = all_data[~pd.isnull(all_data)]
+    all_data = df_input[features].dropna().to_numpy().flatten()
 
     # Create figure object
     plt.figure(figsize=kwargs.get('figsize', (8,3)))
@@ -306,8 +304,8 @@ def plot_histogram(df_input:pd.DataFrame, features:list, bins_rule:str='fd', **k
 
     # Format values for the description table
     values=[[utils.number2latex(element) for element in array] for array in description_table.to_numpy()]
-
-    text = utils.df2latex(pd.DataFrame(data=values, index=list(description_table.index), columns=[r'\texttt{' + feature + '}' for feature in features]))
+    columns = kwargs.get('describe_colnames', [r'\texttt{' + feature + '}' for feature in features])
+    text = utils.df2latex(pd.DataFrame(data=values, index=list(description_table.index), columns=columns))
 
     # Print statistical summary before the histogram
     if kwargs.get('describe', True): 
