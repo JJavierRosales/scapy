@@ -120,11 +120,12 @@ def number2latex(value) -> str:
     """
     # Check input is a number
     if not (isinstance(value, int) or isinstance(value, float)): return value
+    if not np.isfinite(value): return value
 
     # Instanciate function to get the order of magnitude
     om = lambda x: order_of_magnitude(x)
 
-    if value%1==0 or isinstance(value, int):
+    if (value%1==0 or isinstance(value, int)) and om(value)<5:
         # If integer, show no decimals
         output = '{:d}'.format(int(value))
     elif (om(value)>-2 and om(value)<5):
