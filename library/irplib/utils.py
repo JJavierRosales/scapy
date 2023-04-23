@@ -3,6 +3,7 @@ import numpy as np
 import math
 import warnings
 import scipy.stats as st
+from typing import Union
 from sklearn.linear_model import LinearRegression
 
 #%%
@@ -137,7 +138,7 @@ def number2latex(value) -> str:
 
     return output
 #%%
-def outliers_boundaries(data: np.ndarray, threshold:float = 1.5, positive_only:bool=False) -> tuple:
+def outliers_boundaries(data: np.ndarray, threshold: Union[tuple, float]=1.5, positive_only:bool=False) -> Union[tuple, np.ndarray, np.ndarray]:
     """Compute limits of standard data within a given data distribution.
 
     Args:
@@ -147,16 +148,27 @@ def outliers_boundaries(data: np.ndarray, threshold:float = 1.5, positive_only:b
 
     Returns:
         tuple: Range of values between which satandard data is comprised.
+        np.ndarray: Array contaning standard data (non outliers).
+        np.ndarray: Array containing outliers.
     """
     
     Q1 = np.quantile(data,0.25)
     Q3 = np.quantile(data,0.75)
     IQR = st.iqr(data)
+
+    threshold = (threshold, threshold) if isinstance(threshold, float) else threshold
     
     if positive_only:
-        return (max(0,(Q1-IQR*threshold)), (Q3+IQR*threshold))
+        std_lims = (max(0,(Q1-IQR*threshold[0])), (Q3+IQR*threshold[1]))
     else:
-        return ((Q1-IQR*threshold), (Q3+IQR*threshold))
+        std_lims = ((Q1-IQR*threshold[0]), (Q3+IQR*threshold[1]))
+
+    # Get outliers and standard data
+    filter_outliers = (data<std_lims[0]) | (data>std_lims[1])
+    outliers = data[filter_outliers]
+    std_data = data[~filter_outliers]
+
+    return std_lims, std_data, outliers
 #%%
 def compute_vif(df_input: pd.DataFrame) -> dict:
     """Compute Variance Inflation Factor to evaluate multicolinearity.

@@ -18,6 +18,40 @@ from IPython.display import clear_output
 from typing import Union
 
 #%%
+def import_cdm_data(filepath: str) -> pd.DataFrame:
+    """Import CDM dataset from the Collision Avoidance Challenge and cast features into the
+    correct data types.
+
+    Args:
+        filepath (str): Path of the CSV file containing CDM data.
+
+    Returns:
+        pd.DataFrame: Dataframe object containing the dataset.
+    """
+
+    # Import training dataset
+    df = pd.read_csv(filepath, sep=',', header=0, index_col=None, skipinitialspace=False)
+
+    # Cast categorical features as category type.
+    for feature in ['event_id', 'mission_id', 'c_object_type', 
+                    't_time_lastob_start', 'c_time_lastob_start',
+                    't_time_lastob_end', 'c_time_lastob_end']:
+        df[feature] = df[feature].astype('category')
+        # df[feature] = df[feature].fillna("UNKNOWN")
+
+    # Cast indexes and integer values to int type.
+    for feature in ['t_obs_available', 't_obs_used',
+                    'c_obs_available', 'c_obs_used',
+                    'F10', 'AP', 'F3M', 'SSN']:
+        df[feature] = np.floor(pd.to_numeric(df[feature], errors='coerce')).astype('Int32')
+
+    # Sort values of dataframe by event_id and time_to_tca and re-index
+    df.sort_values(by=['event_id', 'time_to_tca'], axis='index', 
+                ascending=[True,False], inplace=True, ignore_index=True)
+
+    return df
+
+#%%
 class FitScipyDistribution:
     def __init__(self, data, distribution):
 
@@ -135,7 +169,7 @@ class FitScipyDistribution:
         arg, loc, scale = self.params['arg_values'], self.params['loc'], self.params['scale']
         
         # Get standard data limits for better representation
-        std_lims = utils.outliers_boundaries(self.data, threshold = 1.5, positive_only=False)
+        std_lims, std_data, outliers = utils.outliers_boundaries(self.data.flatten(), threshold = 1.5, positive_only=False)
         
         # Build PDF and turn into pandas Series
         x = np.linspace(std_lims[0], std_lims[1], size)
@@ -231,12 +265,13 @@ def find_best_distribution(data: pd.Series, scipy_distributions:list):
         # If it improves the current best distribution, reassign best distribution
         if best_stdist.r2_score() < fitted_stdist.r2_score(): best_stdist = fitted_stdist
         
-        fitting_results.append([fitted_stdist.name, fitted_stdist.r2_score()])
+        params = {'params': fitted_stdist.params, 'r2_score': fitted_stdist.r2_score()}
+        fitting_results.append([fitted_stdist.name, params])
         
     # Sort values of dataframe by sse ascending and and re-index.
-    ranking = pd.DataFrame(data=fitting_results, columns=['distribution', 'r2_score'])
-    ranking.sort_values(by=['r2_score'], axis='index', ascending=[False], 
-                              inplace=True, ignore_index=True)
+    ranking = pd.DataFrame(data=fitting_results, columns=['distribution', 'results'])
+    #ranking.sort_values(by=['r2_score'], axis='index', ascending=[False], 
+    #                          inplace=True, ignore_index=True)
     
     # Clear output to print final results
     # clear_output(wait=True)
@@ -279,10 +314,7 @@ def plot_histogram(df_input:pd.DataFrame, features:list, bins_rule:str='fd', **k
     if not 'category' in df_input[features].dtypes.values:
         # Compute number of outliers for better representation on histogram
 
-        std_lims = utils.outliers_boundaries(all_data, threshold = 1.5, positive_only=np.sum(all_data<0)==0)
-
-        # Identify outliers
-        outliers = (all_data<std_lims[0]) | (all_data>std_lims[1])
+        std_lims, std_data, outliers = utils.outliers_boundaries(all_data, threshold = 1.5, positive_only=np.sum(all_data<0)==0)
 
         # Compute new X-axis limits for a better plot representation.
         xlim = kwargs.get('xlim', (utils.round_by_mo(max(std_lims[0], all_data.min()), abs_method='floor'), 
@@ -291,7 +323,7 @@ def plot_histogram(df_input:pd.DataFrame, features:list, bins_rule:str='fd', **k
         plt_kwargs.update(dict(range=xlim))
 
         # Calculate number of bins to plot histogram 
-        bins = kwargs.get('bins', utils.nbins(all_data[~outliers], bins_rule)['n'])
+        bins = kwargs.get('bins', utils.nbins(std_data, bins_rule)['n'])
 
         description_table = pd.DataFrame(data=df_input[features]).describe(percentiles=[0.05, 0.25, 0.5, 0.75, 0.95])
 
