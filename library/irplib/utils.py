@@ -7,11 +7,27 @@ from typing import Union
 from sklearn.linear_model import LinearRegression
 
 #%%
-def nbins(data: np.ndarray, rule:str = 'fd') -> dict:
+def arglocmax(a:np.ndarray):
+
+    condition = np.r_[True, a[1:] > a[:-1]] & np.r_[a[:-1] > a[1:], True]
+    index_array = np.asarray([i for i, c in enumerate(condition) if c], dtype=np.int32)
+
+    return index_array
+
+#%%
+def arglocmin(a:np.ndarray):
+
+    condition = np.r_[True, a[1:] < a[:-1]] & np.r_[a[:-1] < a[1:], True]
+    index_array = np.asarray([i for i, c in enumerate(condition) if c], dtype=np.int32)
+
+    return index_array
+
+#%%
+def nbins(data:np.ndarray, rule:str = 'fd') -> dict:
     """Calculate number of bins and bin width for histograms.
 
     Args:
-        data (np.float32): Array containing all data.
+        data (array_like): Array containing all data.
         rule (str): Rule to use to compute the bin size. It can be one of the following options:
             - Sturge ('sturge')
             - Scott ('scott')
