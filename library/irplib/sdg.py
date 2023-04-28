@@ -7,6 +7,7 @@ import pandas as pd
 import scipy.stats as st
 import math
 from typing import Union
+import warnings
 
 #%%
 # Define function to compute KDE
@@ -34,19 +35,16 @@ def kde(x:np.ndarray, x_grid:np.ndarray, bandwidth:float, **kwargs) -> np.ndarra
     
     return epd
 #%%
-def plot_scipy_pdf(data: pd.Series, stdist: st, **kwargs) -> None:
+def plot_scipy_pdf(data: np.ndarray, stdist: st, **kwargs) -> None:
     """Plot histogram and PDF based on a given distribution and its parameters
 
     Args:
-        data (pd.Series): Actual data to plot in the histogram.
+        data (np.ndarray): Actual data to plot in the histogram.
         stdist (st): Statistical distribution from SciPy to plot.
 
     Returns:
         None: None
     """
-
-    # Cast data as numpy array without nan.
-    data = data.dropna().to_numpy().flatten()
 
     # Display plot
     plt.figure(figsize=(7,3))
@@ -186,13 +184,19 @@ def bws_statsmodels(data: np.ndarray, methods: Union[list, str]=['normal_referen
     settings = sm.nonparametric.kernel_density.EstimatorSettings(efficient = sm_kwargs.get('efficient', True), 
                                                                  n_sub = sm_kwargs.get('n_sub', len(data)//10))
 
+    # Ignore warnings from data that can't be fit
+    warnings.filterwarnings("ignore")
+
     bandwidths = {}
     for m, method in enumerate(methods):
         # Compute estimated probability density using method "method"
         epd = smapi.nonparametric.KDEMultivariate(data=data, var_type='c', bw=method, defaults=settings)
 
         # Get the bandwidth parameters.
-        bandwidths[method] = epd.bw
+        bandwidths[method] = epd.bw[0]
+
+    # Re-enable warnings
+    warnings.filterwarnings('default')
         
     return bandwidths
 #%%
@@ -249,7 +253,7 @@ def bws_msecv(data: np.ndarray, bins:dict, conv_accuracy:float = 1e-5,
         avg_apd = np.mean(apds, axis=1, dtype=np.float64)
 
         # Initialize bandwidth array to evaluate estimated probability density from kernel
-        bandwidths, step = np.linspace(bins['width']/100, bins['width'], 100, retstep=True)
+        bandwidths, step = np.linspace(bins['width']/10, bins['width'], 50, retstep=True)
 
         # Initialize best_bw
         best_bw, bw = (0.0, np.inf)
@@ -267,39 +271,46 @@ def bws_msecv(data: np.ndarray, bins:dict, conv_accuracy:float = 1e-5,
                 
                 # Compute MSE from actual vs estimated probability densities
                 mse[b] = ((epd - avg_apd)**2).mean()
-                
-            plt.plot(bandwidths, mse)
-            plt.show()
 
-            print(np.r_[True, mse[1:] > mse[:-1]] & np.r_[mse[:-1] > mse[1:], True])
+
+            # print(f'Local maximums: {utils.arglocmax(mse)}')
+            # print(f'Local minimums: {utils.arglocmin(mse)}')
+            # print(f'Global minimum: {np.argmin(mse)}\t MSE {mse[np.argmin(mse)]:.4e}')
+            
+            # plt.figure(figsize=(6,3))
+            # plt.plot(bandwidths, mse)
+            # plt.ylabel(r'MSE (apd, epd)')
+            # plt.xlabel(r'Bandwidths')
+            # plt.grid(True, linestyle='--')
+            # plt.show()
+
+            # plot_kde(data, [bw])
+
+            # Get index of minimum MSE. If there are more than 1 local minimum, choose the one with the
+            # highest index (higher bandwidth) to prevent overfitting.
+            argmin_mse = np.argmin(mse) if len(utils.arglocmin(mse))==1 else utils.arglocmin(mse)[-1]
+
             # Get bandwidth that minimizes MSE and check accuracy vs best_bw
-            bw = bandwidths[np.argmin(mse)]
-            print(np.argmin(mse))
-            print(mse)
-            plot_kde(data, [bw])
-
-            if print_log: 
-                print(f' - Bandwidth range = [{bandwidths[0]:2.4f}, {bandwidths[-1]:2.4f}]'
-                            f'\tBest bw = {bw:2.5f}  Conv. accuracy = {abs(1 - best_bw/bw):2.4e}')
+            bw = bandwidths[argmin_mse]
+            
+            # if print_log: 
+            #     print(f' - Bandwidth range = [{bandwidths[0]:2.4f}, {bandwidths[-1]:2.4f}]'
+            #                 f'\tBest bw = {bw:2.5f}  Conv. accuracy = {abs(1 - best_bw/bw):2.4e}')
 
             # Check if convergence accuracy is achieved to stop iterations
             if abs(1 - best_bw/bw) <= conv_accuracy: break
 
             # Update best_bw and bandwidths array to increase final bandwidth accuracy
             best_bw = bw
-
-            bandwidths, step = np.linspace(bw-step, bw+step, 100, retstep = True)
+            bandwidths, step = np.linspace(bw-step, bw+step, len(bandwidths)+10, retstep = True)
 
 
         # Add best bandwidth from this group of batches to final array
         best_bandwidths[i] = best_bw 
 
         if print_log: 
-            print(f'\n\t -> Batches = {batches:2d} ({len(data)//batches:5d} d.p. per batch)  '
-                            f'Best bw = {best_bw:.5f} Conv. accuracy = {abs(1 - best_bw/bw):.4e}  MSE(apd, epd) = {mse.min():.4e}\n')
-
-            print(best_bandwidths)
-            # plot_kde(data, best_bandwidths[best_bandwidths>0])
+            print(f'Batches = {batches:2d} ({len(data)//batches:5d} d.p. per batch)  '
+                  f'Best bw = {best_bw:.5f} Conv. accuracy = {abs(1 - best_bw/bw):.4e}  MSE(apd, epd) = {mse.min():.4e}')
 
     # Round-up best bandwidth from all groups of batches using one order of magnitude less
     scale = 10**utils.order_of_magnitude(best_bandwidths.mean())
