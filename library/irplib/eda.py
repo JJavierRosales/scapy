@@ -30,7 +30,7 @@ def import_cdm_data(filepath: str) -> pd.DataFrame:
     """
 
     # Import training dataset
-    df = pd.read_csv(filepath, sep=',', header=0, index_col=None, skipinitialspace=False)
+    df = pd.read_csv(filepath, sep=',', header=0, index_col=0, skipinitialspace=False)
 
     # Cast categorical features as category type.
     for feature in ['event_id', 'mission_id', 'c_object_type', 
