@@ -56,7 +56,7 @@ def nbins(data:np.ndarray, rule:str = 'fd') -> dict:
     
     return {'n': n_bins, 'width': bins_width[rule]}
 #%%
-def order_of_magnitude(value: float) -> int:
+def om(value: float) -> int:
     """Get order of magnitude of value.
 
     Args:
@@ -65,12 +65,13 @@ def order_of_magnitude(value: float) -> int:
     Returns:
         int: Order of magnitude.
     """
-    if value==0: return 0
+    if not isinstance(value, float) and not isinstance(value, int): return np.nan
+    if value==0 or np.isnan(value): return 0
     if abs(value)==np.inf: return np.inf
     
     return int(math.floor(math.log(abs(value), 10)))
 #%%
-def round_by_mo(value:float, abs_method:str='ceil', **kwargs) -> float:
+def round_by_om(value:float, abs_method:str='ceil', **kwargs) -> float:
     """Round up/down float by specifying rounding of magnitude.
 
     Args:
@@ -89,7 +90,7 @@ def round_by_mo(value:float, abs_method:str='ceil', **kwargs) -> float:
     if value==0: return 0
 
     # Compute order of magnitude
-    om = 10**kwargs.get('rounding_om', order_of_magnitude(value))
+    om = 10**kwargs.get('rounding_om', om(value))
     
     # Initialize dictionary with round methods
     methods = {'ceil':math.ceil, 'floor':math.floor}
@@ -140,7 +141,7 @@ def number2latex(value) -> str:
     if not np.isfinite(value): return value
 
     # Instanciate function to get the order of magnitude
-    om = lambda x: order_of_magnitude(x)
+    om = lambda x: om(x)
 
     if (value%1==0 or isinstance(value, int)) and om(value)<5:
         # If integer, show no decimals

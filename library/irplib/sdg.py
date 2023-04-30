@@ -140,7 +140,7 @@ def plot_kde(data:np.ndarray, bandwidths:np.ndarray, **kwargs) -> None:
         probabilities = np.exp(model.score_samples(values))
 
         if len(labels)<b+1:
-            labels.append(f'bw = {bw:.4f}' if  utils.order_of_magnitude(bw)>-4 else f'bw = {bw:.3e}')
+            labels.append(f'bw = {bw:.4f}' if  utils.om(bw)>-4 else f'bw = {bw:.3e}')
 
         plt.plot(values, probabilities, label=labels[b])
 
@@ -313,7 +313,7 @@ def bws_msecv(data: np.ndarray, bins:dict, conv_accuracy:float = 1e-5,
                   f'Best bw = {best_bw:.5f} Conv. accuracy = {abs(1 - best_bw/bw):.4e}  MSE(apd, epd) = {mse.min():.4e}')
 
     # Round-up best bandwidth from all groups of batches using one order of magnitude less
-    scale = 10**utils.order_of_magnitude(best_bandwidths.mean())
+    scale = 10**utils.om(best_bandwidths.mean())
     best_bw = (math.ceil(best_bandwidths.mean()/scale)*scale)
     
     

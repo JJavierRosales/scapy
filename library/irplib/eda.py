@@ -317,8 +317,8 @@ def plot_histogram(df_input:pd.DataFrame, features:list, bins_rule:str='fd', **k
         std_lims, std_data, outliers = utils.outliers_boundaries(all_data, threshold = 1.5, positive_only=np.sum(all_data<0)==0)
 
         # Compute new X-axis limits for a better plot representation.
-        xlim = kwargs.get('xlim', (utils.round_by_mo(max(std_lims[0], all_data.min()), abs_method='floor'), 
-                                utils.round_by_mo(min(std_lims[1], all_data.max()), abs_method='ceil')))
+        xlim = kwargs.get('xlim', (utils.round_by_om(max(std_lims[0], all_data.min()), abs_method='floor'), 
+                                utils.round_by_om(min(std_lims[1], all_data.max()), abs_method='ceil')))
         plt.xlim(xlim)
         plt_kwargs.update(dict(range=xlim))
 
@@ -353,7 +353,7 @@ def plot_histogram(df_input:pd.DataFrame, features:list, bins_rule:str='fd', **k
         plt.hist(data, bins=bins, **plt_kwargs)
     
     # Compute new Y-axis limits for a better plot representation.
-    ylim = kwargs.get('ylim',(axes.get_ylim()[0], utils.round_by_mo(axes.get_ylim()[1], abs_method='ceil')))
+    ylim = kwargs.get('ylim',(axes.get_ylim()[0], utils.round_by_om(axes.get_ylim()[1], abs_method='ceil')))
     plt.yticks(np.linspace(ylim[0],ylim[1],5))
     plt.ylim(ylim)
 
