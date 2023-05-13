@@ -90,7 +90,7 @@ def round_by_om(value:float, abs_method:str='ceil', **kwargs) -> float:
     if value==0: return 0
 
     # Compute order of magnitude
-    om = 10**kwargs.get('rounding_om', om(value))
+    initial_om = 10**kwargs.get('rounding_om', om(value))
     
     # Initialize dictionary with round methods
     methods = {'ceil':math.ceil, 'floor':math.floor}
@@ -98,7 +98,7 @@ def round_by_om(value:float, abs_method:str='ceil', **kwargs) -> float:
     # Invert method if value is negative
     if value<0: abs_method = 'floor' if abs_method=='ceil' else 'ceil'
 
-    return methods[abs_method](value/om)*om
+    return methods[abs_method](value/initial_om)*initial_om
 
 #%%
 #%%
@@ -139,9 +139,6 @@ def number2latex(value) -> str:
     # Check input is a number
     if not (isinstance(value, int) or isinstance(value, float)): return value
     if not np.isfinite(value): return value
-
-    # Instanciate function to get the order of magnitude
-    om = lambda x: om(x)
 
     if (value%1==0 or isinstance(value, int)) and om(value)<5:
         # If integer, show no decimals
@@ -187,14 +184,14 @@ def outliers_boundaries(data: np.ndarray, threshold: Union[tuple, float]=1.5, po
 
     return std_lims, std_data, outliers
 #%%
-def compute_vif(df_input: pd.DataFrame) -> dict:
+def compute_vif(df_input: pd.DataFrame) -> pd.DataFrame:
     """Compute Variance Inflation Factor to evaluate multicolinearity.
 
     Args:
         df_input (pd.DataFrame): Input dataframe to compute VIF.
 
     Returns:
-        dict: Dictionary with all the features as keys and VIF scores as values.
+        pd.DataFrame: DataFrame with all the features as keys and VIF scores as values.
     """
     
     # Create deep copy of input DataFrame
@@ -204,11 +201,12 @@ def compute_vif(df_input: pd.DataFrame) -> dict:
     features = [feature for feature in data.columns if not data[feature].dtype in ['category', 'str']]
     model = LinearRegression()
     
-    # Create empty dataset with 0s
-    result = pd.DataFrame(index=['VIF'], columns=features)
-    result = result.fillna(0)
+    # Create empty list to store R2 scores
+    r2_scores = []
     
     # Iterate through all features to evaluate its VIF
+    warnings.filterwarnings("ignore") # Disable warnings in case of division by 0
+    
     for y_feature in features:
         
         x_features = [f for f in features if not f==y_feature]
@@ -219,45 +217,129 @@ def compute_vif(df_input: pd.DataFrame) -> dict:
         # Fit the model and calculate VIF
         model.fit(x, y)
         
-        # Disable warnings in case of division by 0
-        warnings.filterwarnings("ignore")
-        result[y_feature] =  (1/(1-model.score(x, y)))
-        warnings.filterwarnings("default")
+        r2_scores.append(1/(1-model.score(x, y)))
+    
+    warnings.filterwarnings("default") # Restore warnings
+
+    # Create dataframe with the results of the VIF computation
+    result = pd.DataFrame(index=features, columns=['VIF'], data=r2_scores)
         
     return result
 #%%
-def vif_selection(df_input:pd.DataFrame, max_vif:float=0.8) -> dict:
+def vif_selection(df_input:pd.DataFrame, maxvif:float=5.0) -> dict:
     """Variable selection using Variance Inflation Factor (VIF) threshold.
 
     Args:
         df_input (pd.DataFrame): Input dataframe upon which VIF selection is performed.
-        max_vif (float, optional): VIF score used to select variables. Defaults to 0.8.
+        maxvif (float, optional): VIF score used to select variables. Defaults to 0.8.
 
     Returns:
         dict: Dictionary containing correlated and independent features with their VIF scores.
     """
     
     # Create a deep copy of the input DataFrame
-    result = df_input.copy(deep=True).dropna()
-    
-    # Compute initial VIF from the entire dataset
-    vif = compute_vif(result)
-    
+    df = df_input.copy(deep=True).dropna()
+
+    # Compute all VIF values and all features with the maximum VIF
+    vif = compute_vif(df)
+    vif_values = np.sort(np.unique(np.asarray(vif.values).flatten()))[::-1]
+    maxvif_features = list(vif[vif['VIF']==vif_values[0]].index.values)
+
     correlated = {}
-    while vif.values.max() > max_vif:
-        
-        collinear_feature = vif.idxmax(axis="columns").values[0]
-        correlated[collinear_feature] = vif.loc['VIF', collinear_feature]
-        
-        features = [c for c in list(result.columns) if not c==collinear_feature]
-        
-        # Compute VIF with one less feature
-        result = result[features]
-        vif = compute_vif(result)
-    
+    while vif_values[0] > maxvif:
+
+        # Initialize tuple to evaluate which feature (among those with max VIF) that should be removed,
+        # based on the maximum VIF, number of maximum VIFs and second maximum VIF after feature removal
+        collinear_feature = {'feature':maxvif_features[0],
+                             'maxvif':np.inf,
+                             'n_features_maxvif':len(df.columns),
+                             '2nd_maxvif':np.inf}
+
+        # Iterate over all features with maximum VIF
+        for feature in maxvif_features:
+
+            vif = compute_vif(df[[f for f in df.columns if f!= feature]])
+            vif_values = np.sort(np.unique(np.asarray(vif.values).flatten()))[::-1]
+            n_features_maxvif = np.sum(vif.values==vif_values[0])
+
+            # Check if VIF analysis is producing lower values when removing the feature
+            if (collinear_feature['maxvif'] > vif_values[0]) or \
+               ((collinear_feature['maxvif'] == vif_values[0]) and \
+               (collinear_feature['n_features_maxvif'] > n_features_maxvif)) or \
+               ((collinear_feature['maxvif'] == vif_values[0]) and \
+               (collinear_feature['n_features_maxvif'] == n_features_maxvif) and \
+               (collinear_feature['2nd_maxvif'] >= vif_values[1])):
+                
+                collinear_feature['feature'] = feature
+                collinear_feature['maxvif'] = vif_values[0]
+                collinear_feature['n_features_maxvif'] = n_features_maxvif
+                collinear_feature['2nd_maxvif'] = vif_values[1]
+
+
+        # Store correlated values
+        correlated[collinear_feature['feature']] = collinear_feature['maxvif']
+
+        # Update dataframe to exclude correlated feature
+        df.drop(columns=[collinear_feature['feature']], inplace=True)
+
+        # Compute VIF values excluding the correlated feature
+        vif = compute_vif(df)
+        vif_values = np.sort(np.unique(np.asarray(vif.values).flatten()))[::-1]
+        maxvif_features = list(vif[vif['VIF']==vif_values[0]].index.values)
+
     # Get information on the independent and correlated variables
-    output = {'independent': vif.to_dict('records')[0],
+    output = {'independent': vif.to_dict('index'),
               'correlated': correlated}
               
+    return output
+#%%
+def tabular_list(input_list:list, n_cols:int = 3, **kwargs) -> str:
+    """Format list as a tabular table in string format.
+
+    Args:
+        input_list (list): List of items to format.
+        n_cols (int, optional): Number of columns to segment the list. Defaults to 3.
+
+    Returns:
+        str: String with the list shown as a table.
+    """
+
+    hsep = kwargs.get('hsep', 4) # Get horizontal separation between columns. Defaults to 4.
+    col_sep = kwargs.get('col_sep', f'') # Get column separator string. Defaults to empty
+    alignment = kwargs.get('alignment', '<') # Get text alignment. Defaults to < (left).
+    max_len = kwargs.get('max_len', max([len(item) for item in input_list])) # Get maximum length allowed for the items. Defaults to 30.
+    axis = kwargs.get('axis', 1) # Get display order (0 for columns, 1 for rows)
+
+    # Shorten item of list if it exceeds max_len parameter
+    for i, item in enumerate(input_list):
+        if max_len > len(item) or max_len<4: continue
+        out = len(item) - max_len
+        n_char = (len(item)//2+len(item)%2) - (out//2+out%2)-1
+        input_list[i] = item[:n_char] + '..' + item[-(max_len - n_char - 2):]
+
+    output_list = []
+
+    n_rows = len(input_list)//n_cols + len(input_list)%n_cols
+    for r in range(n_rows):
+        row = []
+
+        col_range = np.arange(r*n_cols, r*n_cols + n_cols, 1) if axis==0 else \
+                    np.arange(r, r+n_cols*n_rows, n_rows)
+        
+        for c in col_range:
+            if len(input_list)>=c+1:
+                row.append(input_list[c])
+            else:
+                row.append('')
+
+        output_list.append(row) 
+
+    output = f''
+    for r, row in enumerate(output_list):
+        for c, item in enumerate(row):
+            if item=='': continue
+            output = output + col_sep + f'{item:{alignment}{max_len + hsep}}\t'
+        output = output + f'\n'
+
     return output
 #%%
