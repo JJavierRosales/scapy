@@ -36,14 +36,14 @@ def import_cdm_data(filepath: str) -> pd.DataFrame:
     for feature in ['event_id', 'mission_id', 'c_object_type', 
                     't_time_lastob_start', 'c_time_lastob_start',
                     't_time_lastob_end', 'c_time_lastob_end']:
-        df[feature] = df[feature].astype('category')
-        # df[feature] = df[feature].fillna("UNKNOWN")
+        df[feature] = df[feature].fillna(0, inplace=False).astype('category')
+        #df[feature] = df[feature].fillna("UNKNOWN")
 
     # Cast indexes and integer values to int type.
     for feature in ['t_obs_available', 't_obs_used',
                     'c_obs_available', 'c_obs_used',
                     'F10', 'AP', 'F3M', 'SSN']:
-        df[feature] = np.floor(pd.to_numeric(df[feature], errors='coerce')).astype('Int32')
+        df[feature] = df[feature].fillna(0, inplace=False).astype('int32')
 
     # Sort values of dataframe by event_id and time_to_tca and re-index
     df.sort_values(by=['event_id', 'time_to_tca'], axis='index', 
