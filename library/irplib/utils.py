@@ -293,7 +293,7 @@ def vif_selection(df_input:pd.DataFrame, maxvif:float=5.0) -> dict:
               
     return output
 #%%
-def tabular_list(input_list:list, n_cols:int = 3, **kwargs) -> str:
+def tabular_list(input:list, n_cols:int = 3, **kwargs) -> str:
     """Format list as a tabular table in string format.
 
     Args:
@@ -303,6 +303,8 @@ def tabular_list(input_list:list, n_cols:int = 3, **kwargs) -> str:
     Returns:
         str: String with the list shown as a table.
     """
+
+    input_list = input.copy()
 
     hsep = kwargs.get('hsep', 4) # Get horizontal separation between columns. Defaults to 4.
     col_sep = kwargs.get('col_sep', f'') # Get column separator string. Defaults to empty
@@ -319,7 +321,7 @@ def tabular_list(input_list:list, n_cols:int = 3, **kwargs) -> str:
 
     output_list = []
 
-    n_rows = len(input_list)//n_cols + len(input_list)%n_cols
+    n_rows = len(input_list)//n_cols + (1 if len(input_list)%n_cols>0 else 0)
     for r in range(n_rows):
         row = []
 
