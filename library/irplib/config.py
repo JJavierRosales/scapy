@@ -42,12 +42,12 @@ features_groups = {
 
 #%%
 # Categorical input features
-features =     {"event_id":                   	{'input': False, 'continuous': False, 'variable': False, 'independent': False},
+features =     {"event_id":                   	{'input': None, 'continuous': False, 'variable': False, 'independent': False},
                 "time_to_tca":                	{'input': True, 'continuous': True, 'variable': True, 'independent': True},
-                "mission_id":                 	{'input': False, 'continuous': False, 'variable': False, 'independent': False},
+                "mission_id":                 	{'input': None, 'continuous': False, 'variable': False, 'independent': False},
                 "risk":                       	{'input': False, 'continuous': True, 'variable': True, 'independent': False},
                 "max_risk_estimate":          	{'input': False, 'continuous': True, 'variable': True, 'independent': False},
-                "max_risk_scaling":           	{'input': False, 'continuous': True, 'variable': False, 'independent': False},
+                "max_risk_scaling":           	{'input': None, 'continuous': True, 'variable': False, 'independent': False},
                 "miss_distance":              	{'input': True, 'continuous': True, 'variable': True, 'independent': True},
                 "relative_speed":             	{'input': True, 'continuous': True, 'variable': False, 'independent': False},
                 "relative_position_r":        	{'input': True, 'continuous': True, 'variable': True, 'independent': True},
@@ -151,14 +151,11 @@ def get_features(**kwargs):
 
     if not isinstance(kwargs, dict): return None
 
-    filter = {}
-    for kwarg in ['input', 'continuous', 'variable', 'independent']:
-        filter[kwarg] = kwargs.get(kwarg, False)
 
     output = {}
     for feature, clusters in features.items():
         exclude = False
-        for key, value in filter.items():
+        for key, value in kwargs.items():
             exclude = True if clusters[key] != value else exclude
 
         if not exclude: output[feature] = clusters
