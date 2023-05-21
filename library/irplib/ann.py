@@ -73,7 +73,7 @@ class CollisionRisk(nn.Module):
         # Concatenate embedding sections into 1
         x = torch.cat(embeddings, 1)
         
-        # Apply dropout function to to the embeddings torch
+        # Apply dropout function to the embeddings torch
         x = self.emb_drop(x)
         
         # Normalize continuous variables

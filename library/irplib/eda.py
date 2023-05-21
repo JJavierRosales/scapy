@@ -43,7 +43,7 @@ def import_cdm_data(filepath: str) -> pd.DataFrame:
     for feature in ['t_obs_available', 't_obs_used',
                     'c_obs_available', 'c_obs_used',
                     'F10', 'AP', 'F3M', 'SSN']:
-        df[feature] = df[feature].fillna(0, inplace=False).astype('int32')
+        df[feature] = df[feature].fillna(0, inplace=False).astype('int16')
 
     # Sort values of dataframe by event_id and time_to_tca and re-index
     df.sort_values(by=['event_id', 'time_to_tca'], axis='index', 
