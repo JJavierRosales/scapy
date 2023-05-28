@@ -369,7 +369,8 @@ def plot_histogram(df_input:pd.DataFrame, features:list, bins_rule:str='fd', **k
     # Plot legend and print plot
     if kwargs.get('legend', True): plt.legend(loc='upper right', fontsize=10)
     plt.grid(True, linestyle='--')
+    if 'filepath' in list(kwargs.keys()): plt.savefig(kwargs['filepath'], bbox_inches='tight')
     plt.show()
-    
+
     return None
 
