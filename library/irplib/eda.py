@@ -52,6 +52,37 @@ def import_cdm_data(filepath: str) -> pd.DataFrame:
     return df
 
 #%%
+# Define Collision Risk Probability Estimator
+class RobustScalerClipper():
+
+    def __init__(self, data:np.ndarray, quantiles:tuple=(0.01, 0.99), with_offset:bool=False):
+
+        # Instanciate data, quantiles, scale, center (if applicable), and scaled data
+        self.data = data 
+        self.quantiles = quantiles
+        self.quantiles_values = (np.quantile(self.data, quantiles[0]), np.quantile(self.data, quantiles[1]))
+        
+        self.scale = utils.round_by_om(self.quantiles_values[1]-self.quantiles_values[0])
+
+        if with_offset:
+            if np.sum(self.data<0)==0:
+                self.offset = np.min(self.data)
+            elif np.sum(self.data>0)==0:
+                self.offset = np.max(self.data)
+            else:
+                self.offset = utils.round_by_om(np.quantile(self.data, 0.5))
+        else:
+            self.offset = None
+        self.scaled_data = (self.data-self.offset)/self.scale if with_offset else self.data/self.scale
+
+    def clip(self, clip_lims:tuple=(-1.0, 1.0)):
+
+        self.clip_lims = clip_lims
+        self.clipped_data = np.clip(self.scaled_data, a_min=clip_lims[0], a_max=clip_lims[1])
+        self.outliers = np.sum(self.scaled_data>clip_lims[1]) + np.sum(self.scaled_data<clip_lims[0])
+        
+        return self
+#%%
 class FitScipyDistribution:
     def __init__(self, data, distribution):
 
