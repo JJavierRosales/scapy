@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 import pandas as pd
+from tqdm import trange
 
 #%%
 def get_lr(optimizer):
@@ -40,6 +41,70 @@ def event_ts_sets(full_seq:np.ndarray, window_size:int, events_to_forecast:int=1
         ts_sets.append((seq_i, target_i))
 
     return ts_sets
+
+#%%
+def tsf_iotensors(tsf_tensors:dict, features:list, seq_length:int, filepath:str = None) -> dict:
+    """Get input and output tensors to train the RNN model.
+
+    Args:
+        tsf_tensors (dict): Dictionary containing tensors. Every key contains a list of tensors in the tuple format (input, forecast).
+        features (list): List of features to extract the inputs/outputs from.
+        filepath (str, optional): Directory path where the tensors are stored. Defaults to None.
+
+    Returns:
+        dict: Dictionary containing inputs and outputs to train the model.
+    """
+
+    # Get features available in tsf_tensors dictionary
+    features_available = list(tsf_tensors.keys())
+
+    # Check all features requested by user are actually available in the tsf_tensors dictionary.
+    for feature in features:
+        if not feature in features_available: 
+            print(f'Feature {feature} has not been processed yet. Please extract tensors from this feature before proceeding.')
+            return None
+
+    # Get length of sequence and number of sequences to process from tensor file
+    seq_length = tsf_tensors[features[0]][0][0].size(0)
+    n_sequences = len(tsf_tensors[features[0]])
+
+    # Initialize inputs and outputs arrays to contain sequences to process
+    inputs =  torch.empty((n_sequences,seq_length, len(features)), dtype=torch.float32)
+    outputs = torch.empty((n_sequences,len(features)), dtype=torch.float32)
+
+    # Initialize trange object for sequences to print progress bar.
+    sequences = trange(n_sequences, desc='Getting training and target tensors ...', leave=True)
+    for s in sequences:
+
+        # Initialize list for sequence s
+        inputs_s    = torch.empty((len(features),seq_length), dtype=torch.float32)
+        outputs_s   = torch.empty((len(features),1), dtype=torch.float32)
+        # Get sequence s from all features
+        for f, feature in enumerate(features):
+            
+            # Get sequence s (input and output) from feature f
+            # - inputs_s  = [[f1_t1, f1_t2, ..., f1_tn], [f2_t1, f2_t2, ..., f2_tn], ...]
+            # - outputs_s = [[f1_tn+1], [f2_tn+1], ...]
+            inputs_s[f], outputs_s[f] = tsf_tensors[feature][s]
+
+        # Update progress bar
+        sequences.refresh()
+
+        # Get sequence s (input and output) from feature f
+        # - inputs  = [[f1_t1, f2_t1, ..., fn_t1], [f1_t2, f2_t2, ..., fn_t2], ...]
+        # - outputs = [[f1_tn+1, f2_tn+1, ...], ...]
+        inputs[s,:] =  torch.transpose(inputs_s, 0, 1)
+        outputs[s,:] = torch.transpose(outputs_s, 0, 1)
+
+    io_tensors = {"inputs":inputs, "outputs":outputs}
+
+    # Save the model trained parameters (weights and biases)
+    if filepath!=None:
+        print('Saving training data...', end='\r')
+        torch.save(io_tensors, filepath)
+        print('Saving training data... Done.\n')
+
+    return io_tensors
 
 #%%
 
