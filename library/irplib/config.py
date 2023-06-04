@@ -62,19 +62,18 @@ features =     {"risk":                       	{'input': False, 'continuous': Tr
                 "AP":                         	{'input': True, 'continuous': True, 'variable': True, 'independent': True, 'cluster': 'conjunction'},
 
                 "relative_speed":             	{'input': True, 'continuous': True, 'variable': False, 'independent': False, 'cluster': 'relative_state'},
+                "relative_velocity_r":        	{'input': True, 'continuous': True, 'variable': False, 'independent': True, 'cluster': 'relative_state'},
+                "relative_velocity_t":        	{'input': True, 'continuous': True, 'variable': False, 'independent': True, 'cluster': 'relative_state'},
+                "relative_velocity_n":        	{'input': True, 'continuous': True, 'variable': False, 'independent': True, 'cluster': 'relative_state'},
                 "relative_position_r":        	{'input': True, 'continuous': True, 'variable': True, 'independent': True, 'cluster': 'relative_state'},
                 "relative_position_t":        	{'input': True, 'continuous': True, 'variable': True, 'independent': True, 'cluster': 'relative_state'},
                 "relative_position_n":        	{'input': True, 'continuous': True, 'variable': True, 'independent': True, 'cluster': 'relative_state'},
-                "relative_velocity_r":        	{'input': True, 'continuous': True, 'variable': True, 'independent': True, 'cluster': 'relative_state'},
-                "relative_velocity_t":        	{'input': True, 'continuous': True, 'variable': False, 'independent': True, 'cluster': 'relative_state'},
-                "relative_velocity_n":        	{'input': True, 'continuous': True, 'variable': False, 'independent': True, 'cluster': 'relative_state'},
 
                 "t_cd_area_over_mass":        	{'input': True, 'continuous': True, 'variable': True, 'independent': True, 'cluster': 'coefficients'},
                 "t_cr_area_over_mass":        	{'input': True, 'continuous': True, 'variable': True, 'independent': True, 'cluster': 'coefficients'},
                 "c_cd_area_over_mass":        	{'input': True, 'continuous': True, 'variable': True, 'independent': True, 'cluster': 'coefficients'},
                 "c_cr_area_over_mass":        	{'input': True, 'continuous': True, 'variable': True, 'independent': True, 'cluster': 'coefficients'},
 
-                
                 "t_j2k_ecc":                  	{'input': True, 'continuous': True, 'variable': False, 'independent': True, 'cluster': 'orb_elements'},
                 "t_j2k_inc":                  	{'input': True, 'continuous': True, 'variable': False, 'independent': True, 'cluster': 'orb_elements'},
                 "t_j2k_sma":                  	{'input': True, 'continuous': True, 'variable': False, 'independent': False, 'cluster': 'orb_elements'},
