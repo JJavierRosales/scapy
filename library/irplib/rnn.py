@@ -2,7 +2,9 @@ import torch
 import torch.nn as nn
 import numpy as np
 import pandas as pd
-from tqdm import trange
+from tqdm import tqdm, trange
+
+from . import utils
 
 #%%
 def get_lr(optimizer):
@@ -44,7 +46,8 @@ def event_ts_sets(full_seq:np.ndarray, window_size:int, events_to_forecast:int=1
 
 #%%
 def tsf_iotensors(tsf_tensors:dict, features:list, seq_length:int, filepath:str = None) -> dict:
-    """Get input and output tensors to train the RNN model.
+    """Convert list of tensors from the shape {'feature1': [([time_series1], [forecast1]), ... ([time_seriesN], [forecastN])]}
+    to a dictionary with shape {'inputs': tensos with shape (seq_length, batch_size, input_size), 'outputs': tensos with shape (batch_size, input_size)}.
 
     Args:
         tsf_tensors (dict): Dictionary containing tensors. Every key contains a list of tensors in the tuple format (input, forecast).
@@ -52,7 +55,8 @@ def tsf_iotensors(tsf_tensors:dict, features:list, seq_length:int, filepath:str 
         filepath (str, optional): Directory path where the tensors are stored. Defaults to None.
 
     Returns:
-        dict: Dictionary containing inputs and outputs to train the model.
+        dict: Dictionary containing a torch with inputs in the format (batch_size, seq_length, input_size) and a torh with outputs in the 
+        format (batch_size, input_size) to train the model.
     """
 
     # Get features available in tsf_tensors dictionary
@@ -66,35 +70,68 @@ def tsf_iotensors(tsf_tensors:dict, features:list, seq_length:int, filepath:str 
 
     # Get length of sequence and number of sequences to process from tensor file
     seq_length = tsf_tensors[features[0]][0][0].size(0)
-    n_sequences = len(tsf_tensors[features[0]])
+    batch_size = len(tsf_tensors[features[0]])
+    input_size = len(features)
 
     # Initialize inputs and outputs arrays to contain sequences to process
-    inputs =  torch.empty((n_sequences,seq_length, len(features)), dtype=torch.float32)
-    outputs = torch.empty((n_sequences,len(features)), dtype=torch.float32)
+    inputs =  torch.empty((seq_length, batch_size, input_size), dtype=torch.float32)    # (seq_length, batch_size, input_size)
+    outputs = torch.empty((batch_size, input_size), dtype=torch.float32)             # (batch_size, input_size)
 
-    # Initialize trange object for sequences to print progress bar.
-    sequences = trange(n_sequences, desc='Getting training and target tensors ...', leave=True)
-    for s in sequences:
+    # Iterate over all sequences
+    pb_sequences = utils.progressbar(iterations = range(batch_size), desc_loc='right', description='> Getting training and target tensors ...')
+    for b in pb_sequences.iterations:
 
         # Initialize list for sequence s
-        inputs_s    = torch.empty((len(features),seq_length), dtype=torch.float32)
-        outputs_s   = torch.empty((len(features),1), dtype=torch.float32)
+        inputs_s    = torch.empty((input_size, seq_length), dtype=torch.float32)
+        outputs_s   = torch.empty((input_size, 1), dtype=torch.float32)
         # Get sequence s from all features
         for f, feature in enumerate(features):
             
             # Get sequence s (input and output) from feature f
-            # - inputs_s  = [[f1_t1, f1_t2, ..., f1_tn], [f2_t1, f2_t2, ..., f2_tn], ...]
-            # - outputs_s = [[f1_tn+1], [f2_tn+1], ...]
-            inputs_s[f], outputs_s[f] = tsf_tensors[feature][s]
+            # - inputs_s  = [[f1_t1, f1_t2, ..., f1_tm], 
+            #                [f2_t1, f2_t2, ..., f2_tm], 
+            #                ...,
+            #                [fn_t1, fn_t2, ..., fn_tm]]
+            #
+            # - outputs_s = [[f1_tm+1], 
+            #                [f2_tm+1], 
+            #                ...,
+            #                [fn_tm+1]]
+            #
+            # Where n = input_size, and m = seq_length.
+            inputs_s[f], outputs_s[f] = tsf_tensors[feature][b]
+
+        # Reshape torch to be in the shape (seq_length, input_size) and (1, input_size)
+        inputs_s = torch.transpose(inputs_s,0,1).reshape(seq_length, input_size)
+        outputs_s = outputs_s.reshape(1, input_size)
+
+        # Get sequence s (input and output) from feature f in the shape (seq_length, batch_size, input_size) 
+        # 
+        # - inputs  = [[[f1_s1_t1, f2_s1_t1, ..., fn_s1_t1], 
+        #               [f1_s1_t2, f2_s1_t2, ..., fn_s1_t2], 
+        #                ..., 
+        #               [f1_s1_tm, f2_s1_tm, ..., fn_s1_tm]],
+        #              ...,
+        #              [[f1_sb_t1, f2_sb_t1, ..., fn_sb_t1], 
+        #               [f1_sb_t2, f2_sb_t2, ..., fn_sb_t2], 
+        #                ..., 
+        #               [f1_sb_tm, f2_sb_tm, ..., fn_sb_tm]]]
+        #
+        #
+        # - outputs = [[f1_s1_tm+1, f2_s1_tm+1, ..., fn_s1_tm+1],
+        #               ...,
+        #              [f1_sb_tm+1, f2_sb_tm+1, ..., fn_sb_tm+1]]
+        #
+        # Where n = input_size, m = seq_length, and b = batch_size.
+
+        for s in range(seq_length): inputs[s,b] = inputs_s[s]
+        outputs[b] = outputs_s
+
+        # inputs[s,:] =  torch.transpose(inputs_s, 0, 1)
+        # outputs[s,:] = torch.transpose(outputs_s, 0, 1)
 
         # Update progress bar
-        sequences.refresh()
-
-        # Get sequence s (input and output) from feature f
-        # - inputs  = [[f1_t1, f2_t1, ..., fn_t1], [f1_t2, f2_t2, ..., fn_t2], ...]
-        # - outputs = [[f1_tn+1, f2_tn+1, ...], ...]
-        inputs[s,:] =  torch.transpose(inputs_s, 0, 1)
-        outputs[s,:] = torch.transpose(outputs_s, 0, 1)
+        pb_sequences.refresh(i=b+1)
 
     io_tensors = {"inputs":inputs, "outputs":outputs}
 
@@ -107,44 +144,3 @@ def tsf_iotensors(tsf_tensors:dict, features:list, seq_length:int, filepath:str 
     return io_tensors
 
 #%%
-
-# Define Multivariate LSTM network class
-class EventPropagation(nn.Module):
-    def __init__(self,input_size, hidden_size, output_size, seq_length, num_layers=1):
-        super(EventPropagation, self).__init__()
-        self.input_size = input_size    # Number of input features
-        self.hidden_size = hidden_size  # Number of hidden neurons
-        self.output_size = output_size  # Number of outputs
-        self.num_layers = num_layers    # Number of recurrent (stacked) layers
-        self.seq_length = seq_length
-    
-        self.lstm = nn.LSTM(input_size = self.input_size, 
-                            hidden_size = self.hidden_size,
-                            num_layers = self.num_layers,
-                            batch_first = True)
-        # according to pytorch docs LSTM output is 
-        # (batch_size,seq_len, num_directions * hidden_size)
-        # when considering batch_first = True
-        self.linear = nn.Linear(self.hidden_size*self.seq_length, 
-                                self.output_size)
-        
-    
-    def init_hidden(self, n_sequences):
-        # Initialize states. Even with batch_first = True this remains same as docs
-        h_state = torch.zeros(self.num_layers, n_sequences, self.hidden_size) # Hidden state
-        c_state = torch.zeros(self.num_layers, n_sequences, self.hidden_size) # Cell state
-        self.hidden = (h_state, c_state)
-    
-    
-    def forward(self, inputs):        
-        n_sequences, seq_length, n_features = inputs.size()
-        
-        lstm_out, self.hidden = self.lstm(inputs, self.hidden)
-        # lstm_out(with batch_first = True) is 
-        # (batch_size,seq_len,num_directions * hidden_size)
-        # for following linear layer we want to keep batch_size dimension and merge rest       
-        # .contiguous() -> solves tensor compatibility error
-        inputs = lstm_out.contiguous().view(n_sequences,-1)
-        outputs = self.linear(inputs)
-        
-        return outputs
