@@ -45,14 +45,19 @@ def event_ts_sets(full_seq:np.ndarray, window_size:int, events_to_forecast:int=1
     return ts_sets
 
 #%%
-def tsf_iotensors(tsf_tensors:dict, features:list, seq_length:int, filepath:str = None) -> dict:
-    """Convert list of tensors from the shape {'feature1': [([time_series1], [forecast1]), ... ([time_seriesN], [forecastN])]}
+def tsf_iotensors(tsf_tensors:dict, features:list, seq_length:int, filepath:str = None, batch_first=True) -> dict:
+    """Convert input dictionary with the shape:
+     {'feature_1': [([time_series_1], [forecast_1]), ... ([time_series_n], [forecast_n])],
+      'feature_2': [([time_series_1], [forecast_1]), ... ([time_series_n], [forecast_n])], 
+      ...,
+      'feature_m': [([time_series_1], [forecast1]), ... ([time_series_n], [forecast_n])]}
     to a dictionary with shape {'inputs': tensos with shape (seq_length, batch_size, input_size), 'outputs': tensos with shape (batch_size, input_size)}.
 
     Args:
         tsf_tensors (dict): Dictionary containing tensors. Every key contains a list of tensors in the tuple format (input, forecast).
         features (list): List of features to extract the inputs/outputs from.
         filepath (str, optional): Directory path where the tensors are stored. Defaults to None.
+        batch_first (bool, optional): Shape of inputs tensor. Defaults to True.
 
     Returns:
         dict: Dictionary containing a torch with inputs in the format (batch_size, seq_length, input_size) and a torh with outputs in the 
@@ -74,8 +79,11 @@ def tsf_iotensors(tsf_tensors:dict, features:list, seq_length:int, filepath:str 
     input_size = len(features)
 
     # Initialize inputs and outputs arrays to contain sequences to process
-    inputs =  torch.empty((seq_length, batch_size, input_size), dtype=torch.float32)    # (seq_length, batch_size, input_size)
-    outputs = torch.empty((batch_size, input_size), dtype=torch.float32)             # (batch_size, input_size)
+    outputs = torch.empty((batch_size, input_size), dtype=torch.float32) # (batch_size, input_size)
+    if batch_first:
+        inputs =  torch.empty((batch_size, seq_length, input_size), dtype=torch.float32)    # (batch_size, seq_length, input_size)
+    else:
+        inputs =  torch.empty((seq_length, batch_size, input_size), dtype=torch.float32)    # (seq_length, batch_size, input_size)
 
     # Iterate over all sequences
     pb_sequences = utils.progressbar(iterations = range(batch_size), desc_loc='right', description='> Getting training and target tensors ...')
@@ -84,6 +92,7 @@ def tsf_iotensors(tsf_tensors:dict, features:list, seq_length:int, filepath:str 
         # Initialize list for sequence s
         inputs_s    = torch.empty((input_size, seq_length), dtype=torch.float32)
         outputs_s   = torch.empty((input_size, 1), dtype=torch.float32)
+
         # Get sequence s from all features
         for f, feature in enumerate(features):
             
@@ -101,34 +110,37 @@ def tsf_iotensors(tsf_tensors:dict, features:list, seq_length:int, filepath:str 
             # Where n = input_size, and m = seq_length.
             inputs_s[f], outputs_s[f] = tsf_tensors[feature][b]
 
+
         # Reshape torch to be in the shape (seq_length, input_size) and (1, input_size)
         inputs_s = torch.transpose(inputs_s,0,1).reshape(seq_length, input_size)
-        outputs_s = outputs_s.reshape(1, input_size)
 
-        # Get sequence s (input and output) from feature f in the shape (seq_length, batch_size, input_size) 
-        # 
-        # - inputs  = [[[f1_s1_t1, f2_s1_t1, ..., fn_s1_t1], 
-        #               [f1_s1_t2, f2_s1_t2, ..., fn_s1_t2], 
-        #                ..., 
-        #               [f1_s1_tm, f2_s1_tm, ..., fn_s1_tm]],
-        #              ...,
-        #              [[f1_sb_t1, f2_sb_t1, ..., fn_sb_t1], 
-        #               [f1_sb_t2, f2_sb_t2, ..., fn_sb_t2], 
-        #                ..., 
-        #               [f1_sb_tm, f2_sb_tm, ..., fn_sb_tm]]]
-        #
-        #
-        # - outputs = [[f1_s1_tm+1, f2_s1_tm+1, ..., fn_s1_tm+1],
-        #               ...,
-        #              [f1_sb_tm+1, f2_sb_tm+1, ..., fn_sb_tm+1]]
-        #
-        # Where n = input_size, m = seq_length, and b = batch_size.
+        if batch_first:
 
-        for s in range(seq_length): inputs[s,b] = inputs_s[s]
-        outputs[b] = outputs_s
+            # Get sequence s (input and output) from feature f in the shape (batch_size, seq_length, input_size) 
+            # 
+            # - inputs  = [[[f1_s1_t1, f2_s1_t1, ..., fn_s1_t1], 
+            #               [f1_s1_t2, f2_s1_t2, ..., fn_s1_t2], 
+            #                ..., 
+            #               [f1_s1_tm, f2_s1_tm, ..., fn_s1_tm]],
+            #              ...,
+            #              [[f1_sb_t1, f2_sb_t1, ..., fn_sb_t1], 
+            #               [f1_sb_t2, f2_sb_t2, ..., fn_sb_t2], 
+            #                ..., 
+            #               [f1_sb_tm, f2_sb_tm, ..., fn_sb_tm]]]
+            #
+            #
+            # - outputs = [[f1_s1_tm+1, f2_s1_tm+1, ..., fn_s1_tm+1],
+            #               ...,
+            #              [f1_sb_tm+1, f2_sb_tm+1, ..., fn_sb_tm+1]]
+            #
+            # Where n = input_size, m = seq_length, and b = batch_size.
 
-        # inputs[s,:] =  torch.transpose(inputs_s, 0, 1)
-        # outputs[s,:] = torch.transpose(outputs_s, 0, 1)
+            inputs[b] = inputs_s
+        else:
+            for s in range(seq_length): inputs[s,b] = inputs_s[s]
+
+        outputs[b] = outputs_s.reshape(1, input_size)
+        
 
         # Update progress bar
         pb_sequences.refresh(i=b+1)
