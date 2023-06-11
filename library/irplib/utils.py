@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import math
 import warnings
+import time
 import scipy.stats as st
 from typing import Union
 from sklearn.linear_model import LinearRegression
@@ -345,3 +346,90 @@ def tabular_list(input:list, n_cols:int = 3, **kwargs) -> str:
 
     return output
 #%%
+
+# Define progressbar class
+class progressbar():
+    def __init__(self, iterations, description="", desc_loc='left'):
+
+        # Define list of sectors and range of values they apply to
+        self.sectors_list = list(['', '\u258F', '\u258D', '\u258C', '\u258B', '\u258A', '\u2589', '\u2588'])
+        self.sectors_range = np.linspace(0,1,8)
+
+        self.iterations = iterations
+        self.n_iterations = self.iterations if isinstance(self.iterations, int) else len(self.iterations)
+        self.description = description
+        self.desc_loc = desc_loc
+        self.log = ""
+        self.i = 0
+
+        # Initialize start time of iteration
+        self.it_start_time = None
+
+        # Initialize average duration of iteration
+        self.avg_it_duration = 0.0
+
+
+    def get_progress(self):
+
+        # Compute progress (0 to 100) and subprogress (0 to 1)
+        self.progress = (self.i/self.n_iterations)
+        progress = int(((self.i/self.n_iterations)*100//10))
+        subprogress = (self.i/self.n_iterations*100 - progress*10)/10
+
+        return (progress, subprogress)
+
+    def format_time(self, duration):
+
+        m, s = divmod(duration, 60)
+        h, m = divmod(m, 60)
+
+        if int(h)==0:
+            return f'{int(m):02d}:{int(s):02d}'
+        else:
+            return f'{int(h):02d}:{int(m):02d}:{int(s):02d}'
+
+    
+    def refresh(self, i, description:str = None):
+
+        # Update description if new description is given
+        self.description = self.description if description==None else description
+        
+
+        if i>self.i:
+
+            self.i = i
+
+            # Get duration of iteration, average of duration per iteration and iterations per second.
+            self.it_duration = time.time()-self.it_start_time if self.i > 1 else 0.0
+            self.its_per_second = 1.0/self.it_duration if self.i > 1 else 0.0
+
+            self.avg_it_duration = (self.avg_it_duration*(self.i-1)+self.it_duration)/self.i if self.i > 2 else self.it_duration
+            
+            # Compute estimated remaining time and overall duration.
+            self.estimated_remaining_time = self.avg_it_duration*(self.n_iterations-self.i) if self.i > 1 else 0.0
+            self.estimated_duration = self.avg_it_duration*self.n_iterations if self.i > 1 else 0.0
+
+            # Update iteration start time
+            self.it_start_time = time.time()
+
+        # Calculate how many entire sectors and type of subsector to display 
+        progress, subprogress = self.get_progress()
+        sectors     = self.sectors_list[-1]*progress
+        subsector   = self.sectors_list[np.sum(self.sectors_range<=subprogress)-1]
+
+        # Create log concatenating the description and defining the end of the print log depending on the number of iteration
+        log = f' {self.progress*100:>3.0f}%' + \
+              f' |{sectors}{subsector}{" "*(10-len(sectors)-len(subsector))}|' + \
+              f' {i:>{om(self.n_iterations)}}/{self.n_iterations:<{om(self.n_iterations)}}' + \
+              f' | Remaining time: {self.format_time(self.estimated_remaining_time)}' + \
+              f' ({self.its_per_second:>{om(self.its_per_second) if om(self.its_per_second)>=1 else 1}.2f} it/s) '
+
+        log = self.description + log if self.desc_loc=='left' else f'>' + log + self.description
+
+        # Ensure next log has the same characters so that no residuals from previous log are left in the screen.
+        self.log = log + f'{" "*(len(self.log)-len(log))}' if len(self.log)>len(log) else log
+
+        end = '\n' if i==self.n_iterations else '\r'
+        
+        # Print progress log
+        print(self.log, end=end)
