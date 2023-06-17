@@ -3,6 +3,7 @@
 # Edit at https://www.toptal.com/developers/gitignore?templates=python,latex,macos,matlab
 ### Data folders ###
 data/
+images/
 
 ### Private files ###
 private-*
