@@ -154,7 +154,7 @@ features =     {"risk":                       	{'input': False, 'continuous': Tr
                 "c_position_covariance_det":  	{'input': True, 'continuous': True, 'variable': True, 'independent': False, 'cluster': 'miscellaneous'}}
 
 #%%
-def get_features(**kwargs):
+def get_features(only_names:bool = True, **kwargs):
 
     if not isinstance(kwargs, dict): return None
 
@@ -166,4 +166,7 @@ def get_features(**kwargs):
 
         if not exclude: output[feature] = clusters
 
-    return output
+    if only_names:
+        return list(dict.keys(output))
+    else:
+        return output
