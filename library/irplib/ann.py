@@ -90,10 +90,68 @@ class CollisionRisk(nn.Module):
         x = self.layers(x)
         
         return x
+#%%
+# Define Feature Forecaster module
+class FeatureForecaster(nn.Module):
 
+    def __init__(self, input_size, output_size, layers, p=0.5):
+        
+        # Inherit attributes from nn.Module class
+        super().__init__()
+        
+        ########################################################################
+        # Instanciate functions to use on the forward operation:
+        
+        # self.bn_cont = Normalizes continuous features. This function is 
+        # configured by passing the number of continuous features to normalize.
+        self.BatchNorm = nn.BatchNorm1d(input_size)
+        
+        ########################################################################
+        # Compute total number of inputs to pass to the initial layer (data 
+        # point = Nb. of embeddings + Nb. of continuous variables)
+        n_in = input_size
+        
+        # Run through every layer to set up the operations to perform per layer.
+        # (i.e. layers=[100, 50, 200])
+        layerlist = []
+        for l, n_neurons in enumerate(layers):
+            # On layer l, which contains n_neurons, perform the following 
+            # operations:
+            # 1. Apply Linear neural network model regression (fully connected 
+            # network -> z = Sum(wi*xi+bi))
+            layerlist.append(nn.Linear(n_in,n_neurons))
+            
+            # 2. Apply ReLU activation function (al(z))
+            layerlist.append(nn.ReLU(inplace=True))
+            
+            # 3. Normalize data using the n_neurons
+            layerlist.append(nn.BatchNorm1d(n_neurons))
+            
+            # 4. Cancel out a random proportion p of the neurons to avoid 
+            # overfitting
+            layerlist.append(nn.Dropout(p))
+            
+            # 5. Set new number of input features n_in for the next layer l+1.
+            n_in = n_neurons
+        
+        # Set the last layer of the list which corresponds to the final output
+        layerlist.append(nn.Linear(layers[-1],output_size))
+        
+        # Instantiate layers as a Neural Network sequential task
+        self.layers = nn.Sequential(*layerlist)
+    
+    def forward(self, x):
+        
+        # Normalize continuous variables
+        x = self.BatchNorm(x)
+        
+        # Process all data points with the layers functions (sequential of 
+        # operations)
+        x = self.layers(x)
+        
+        return x
 #%%
-#%%
-def event_ts_sets(feature_seq:np.ndarray, time_seq:np.ndarray) -> list:  
+def event_ts_sets(feature_seq:np.ndarray, time_seq:np.ndarray):  
     """Get all possible Time-Series subsets (sequence->target) from a complete 
     Time-Series set associated to an event.
 
@@ -113,17 +171,26 @@ def event_ts_sets(feature_seq:np.ndarray, time_seq:np.ndarray) -> list:
     # Initialize Time-Series sets list containing tuples with sequence-target
     # for a given event.
     ts_sets = []
+    seq_tensor = torch.empty((n, 3), dtype=torch.float32)
+    target_tensor = torch.empty((n, 2), dtype=torch.float32)
 
     # Create the list of Time-Series sets using a loop.
     for i in range(n):
 
         # Get sequence and target value for element i
-        seq_i  = np.append(feature_seq[i:i+2],
-                           np.abs(time_seq[i+1]-time_seq[i]))
-        target_i  = np.append(feature_seq[i+2],
-                              np.abs(time_seq[i+2]-time_seq[i+1]))
+        seq_tensor[i] = torch.from_numpy(np.append(feature_seq[i:i+2],
+                           np.abs(time_seq[i+1]-time_seq[i])))
+
+        target_tensor[i] = torch.from_numpy(np.append(feature_seq[i+2],
+                            np.abs(time_seq[i+2]-time_seq[i+1])))
+
+
+        # seq_i  = np.append(feature_seq[i:i+2],
+        #                    np.abs(time_seq[i+1]-time_seq[i]))
+        # target_i  = np.append(feature_seq[i+2],
+        #                       np.abs(time_seq[i+2]-time_seq[i+1]))
 
         # Add tuple to the output list
-        ts_sets.append((seq_i, target_i))
+        # ts_sets.append((seq_i, target_i))
 
-    return ts_sets
+    return seq_tensor, target_tensor
