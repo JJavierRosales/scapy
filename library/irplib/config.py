@@ -42,12 +42,12 @@ features_groups = {
 
 #%%
 # Categorical input features
-features =     {"risk":                       	{'input': False, 'continuous': True, 'variable': True, 'independent': False, 'cluster': 'targets'},
+features =     {"event_id":                   	{'input': None, 'continuous': False, 'variable': False, 'independent': False, 'cluster':'ids'},
+                "mission_id":                 	{'input': None, 'continuous': False, 'variable': False, 'independent': False, 'cluster': 'ids'},
+    
+                "risk":                       	{'input': False, 'continuous': True, 'variable': True, 'independent': False, 'cluster': 'targets'},
                 "max_risk_estimate":          	{'input': False, 'continuous': True, 'variable': True, 'independent': False, 'cluster': 'targets'},
                 "max_risk_scaling":           	{'input': None, 'continuous': True, 'variable': False, 'independent': False, 'cluster': 'targets'},
-
-                "event_id":                   	{'input': None, 'continuous': False, 'variable': False, 'independent': False, 'cluster':'ids'},
-                "mission_id":                 	{'input': None, 'continuous': False, 'variable': False, 'independent': False, 'cluster': 'ids'},
 
                 "time_to_tca":                	{'input': True, 'continuous': True, 'variable': True, 'independent': True, 'cluster': 'conjunction'},
                 "miss_distance":              	{'input': True, 'continuous': True, 'variable': True, 'independent': True, 'cluster': 'conjunction'},
@@ -60,6 +60,9 @@ features =     {"risk":                       	{'input': False, 'continuous': Tr
                 "F3M":                        	{'input': True, 'continuous': True, 'variable': False, 'independent': True, 'cluster': 'conjunction'},
                 "SSN":                        	{'input': True, 'continuous': True, 'variable': True, 'independent': True, 'cluster': 'conjunction'},
                 "AP":                         	{'input': True, 'continuous': True, 'variable': True, 'independent': True, 'cluster': 'conjunction'},
+
+                "time_to_cdm":                  {'input': True, 'continuous': True, 'variable': True, 'independent': True, 'cluster': 'conjunction'},
+                "cdms_to_tca":                  {'input': True, 'continuous': True, 'variable': True, 'independent': True, 'cluster': 'conjunction'},
 
                 "relative_speed":             	{'input': True, 'continuous': True, 'variable': False, 'independent': False, 'cluster': 'relative_state'},
                 "relative_velocity_r":        	{'input': True, 'continuous': True, 'variable': False, 'independent': True, 'cluster': 'relative_state'},
@@ -161,12 +164,18 @@ def get_features(only_names:bool = True, **kwargs):
     output = {}
     for feature, clusters in features.items():
         exclude = False
+
+        # Run through all filtering criterias passed with kwargs
         for key, value in kwargs.items():
-            exclude = True if clusters[key] != value else exclude
+
+            # If filters passed through kwargs are not a list, convert value as 
+            # a list.
+            if not isinstance(value, list): value = [value]
+
+            # If a criteria 'key' has multiple conditions, check all parameters 
+            # from feature match at least one of those conditions.
+            exclude = True if clusters[key] not in value else exclude
 
         if not exclude: output[feature] = clusters
 
-    if only_names:
-        return list(dict.keys(output))
-    else:
-        return output
+    return list(dict.keys(output)) if only_names else output
