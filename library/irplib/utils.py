@@ -11,7 +11,8 @@ from sklearn.linear_model import LinearRegression
 def arglocmax(a:np.ndarray):
 
     condition = np.r_[True, a[1:] > a[:-1]] & np.r_[a[:-1] > a[1:], True]
-    index_array = np.asarray([i for i, c in enumerate(condition) if c], dtype=np.int32)
+    index_array = np.asarray([i for i, c in enumerate(condition) if c], 
+                             dtype=np.int32)
 
     return index_array
 
@@ -19,7 +20,8 @@ def arglocmax(a:np.ndarray):
 def arglocmin(a:np.ndarray):
 
     condition = np.r_[True, a[1:] < a[:-1]] & np.r_[a[:-1] < a[1:], True]
-    index_array = np.asarray([i for i, c in enumerate(condition) if c], dtype=np.int32)
+    index_array = np.asarray([i for i, c in enumerate(condition) if c], 
+                             dtype=np.int32)
 
     return index_array
 
@@ -29,20 +31,23 @@ def nbins(data:np.ndarray, rule:str = 'fd') -> dict:
 
     Args:
         data (array_like): Array containing all data.
-        rule (str): Rule to use to compute the bin size. It can be one of the following options:
+        rule (str): Rule to use to compute the bin size. It can be one of the 
+        following options:
             - Sturge ('sturge')
             - Scott ('scott')
             - Rice ('rice')
             - Freedman-Diaconis ('fd') - Default
 
     Returns:
-        dict: Dictionary containing with the number of bins 'n' and bin width 'width'.
+        dict: Dictionary containing with the number of bins 'n' and bin width 
+        'width'.
     """
 
     # Check if rule passed by user is valid
     if not rule in ['sturge', 'scott', 'rice', 'fd']: return None
 
     # Get the number of items within the dataset
+    isinteger = isinstance(data[0], np.integer)
     data = data.astype(np.float64)
     n = len(data)
     
@@ -54,8 +59,15 @@ def nbins(data:np.ndarray, rule:str = 'fd') -> dict:
     
     # Compute number of bins
     n_bins =  math.ceil((data.max() - data.min())/bins_width[rule])
+
+    # Compute range of bins
+    if isinteger:
+        steps = int(math.ceil((data.max() - data.min())/n_bins))
+        bins_range = range(int(data.min()), int(data.max()), steps)
+    else:
+        bins_range = np.linspace(data.min(),data.max()+bins_width[rule], n_bins)
     
-    return {'n': n_bins, 'width': bins_width[rule]}
+    return {'n': n_bins, 'width': bins_width[rule], 'range': bins_range}
 #%%
 def om(value: float) -> int:
     """Get order of magnitude of value.
@@ -66,7 +78,10 @@ def om(value: float) -> int:
     Returns:
         int: Order of magnitude.
     """
-    if not isinstance(value, float) and not isinstance(value, int): return np.nan
+    if not (isinstance(value, np.float) or \
+            isinstance(value, np.integer) or \
+            isinstance(value, int)): 
+        return np.nan
     if value==0 or np.isnan(value): return 0
     if abs(value)==np.inf: return np.inf
     
@@ -77,7 +92,8 @@ def round_by_om(value:float, abs_method:str='ceil', **kwargs) -> float:
 
     Args:
         value (float): Value to round up/down.
-        abs_method (str, optional): Method to round considering the absolute value (up or down). Defaults to 'ceil'.
+        abs_method (str, optional): Method to round considering the absolute 
+        value (up or down). Defaults to 'ceil'.
 
     Returns:
         float: Value rounded.
@@ -108,15 +124,18 @@ def df2latex(df: pd.DataFrame, column_format:str='c') -> str:
 
     Args:
         df (pd.DataFrame): DataFrame to convert to LaTeX format.
-        column_format (str, optional): Columns alignment (left 'l', center 'c', or right 'r'). Defaults to 'c'.
+        column_format (str, optional): Columns alignment (left 'l', center 'c', 
+        or right 'r'). Defaults to 'c'.
 
     Returns:
         str: DataFrame in string format.
     """
 
-    column_format = 'c'*(len(df.columns)+1) if column_format=='c' else column_format
+    column_format = 'c'*(len(df.columns)+1) if column_format=='c' \
+        else column_format
 
-    new_column_names = dict(zip(df.columns, ["\textbf{" + c + "}" for c in df.columns]))
+    new_column_names = dict(zip(df.columns, 
+                            ["\textbf{" + c + "}" for c in df.columns]))
     
     df.rename(new_column_names, axis='columns', inplace=True)
     
@@ -137,29 +156,38 @@ def number2latex(value) -> str:
     Returns:
         str: Return value with specific format.
     """
-    # Check input is a number
-    if not (isinstance(value, int) or isinstance(value, float)): return value
-    if not np.isfinite(value): return value
 
-    if (value%1==0 or isinstance(value, int)) and om(value)<5:
+    output = f'{value}'
+
+    # Check input is a number
+    if not (isinstance(value, np.integer) or \
+            isinstance(value, np.float)): return output
+    if not np.isfinite(value): return output
+
+    if (value%1==0 or isinstance(value, np.integer)) and om(value)<=5:
         # If integer, show no decimals
         output = '{:d}'.format(int(value))
     elif (om(value)>-2 and om(value)<5):
         # If absolute value is in the range (0.01, 10000) show 3 decimals
         output = '{:.3f}'.format(value)
-    elif om(value)>=5 or om(value)<=-2:
-        # If absolute value is in the range (0, 0.01] or [10000, inf) show scientific notation with 3 decimals
-        output = r'$' + '{:.3e}'.format(value).replace('e',r'\cdot10^{').replace('{+0','{').replace('{-0','{-') + r'}$'
+    elif om(value)>5 or om(value)<=-2:
+        # If absolute value is in the range (0, 0.01] or [10000, inf) show 
+        # scientific notation with 3 decimals
+        output = r'$' + '{:.3e}'.format(value).replace('e',r'\cdot10^{')
+        output = output.replace('{+0','{').replace('{-0','{-') + r'}$'
 
     return output
 #%%
-def outliers_boundaries(data: np.ndarray, threshold: Union[tuple, float]=1.5, positive_only:bool=False) -> Union[tuple, np.ndarray, np.ndarray]:
+def outliers_boundaries(data: np.ndarray, threshold: Union[tuple, float]=1.5, 
+        positive_only:bool=False) -> Union[tuple, np.ndarray, np.ndarray]:
     """Compute limits of standard data within a given data distribution.
 
     Args:
         data (np.ndarray): Data to get the outliers boundaries from.
-        threshold (float, optional): Proportion of IQR to take into account. Defaults to 1.5.
-        positive_only (bool, optional): Force negative lower boundary to be 0 if data can only be positive. Defaults to False.
+        threshold (float, optional): Proportion of IQR to take into account. 
+        Defaults to 1.5.
+        positive_only (bool, optional): Force negative lower boundary to be 0 if
+         data can only be positive. Defaults to False.
 
     Returns:
         tuple: Range of values between which satandard data is comprised.
@@ -171,7 +199,8 @@ def outliers_boundaries(data: np.ndarray, threshold: Union[tuple, float]=1.5, po
     Q3 = np.quantile(data,0.75)
     IQR = st.iqr(data)
 
-    threshold = (threshold, threshold) if isinstance(threshold, float) else threshold
+    threshold = (threshold, threshold) if isinstance(threshold, float) \
+        else threshold
     
     if positive_only:
         std_lims = (max(0,(Q1-IQR*threshold[0])), (Q3+IQR*threshold[1]))
@@ -192,21 +221,24 @@ def compute_vif(df_input: pd.DataFrame) -> pd.DataFrame:
         df_input (pd.DataFrame): Input dataframe to compute VIF.
 
     Returns:
-        pd.DataFrame: DataFrame with all the features as keys and VIF scores as values.
+        pd.DataFrame: DataFrame with all the features as keys and VIF scores as 
+        values.
     """
     
     # Create deep copy of input DataFrame
     data = df_input.copy(deep=True).dropna()
     
     # Get the features and model object
-    features = [feature for feature in data.columns if not data[feature].dtype in ['category', 'str']]
+    features = [feature for feature in data.columns \
+                if not data[feature].dtype in ['category', 'str']]
+
     model = LinearRegression()
     
     # Create empty list to store R2 scores
     r2_scores = []
     
     # Iterate through all features to evaluate its VIF
-    warnings.filterwarnings("ignore") # Disable warnings in case of division by 0
+    warnings.filterwarnings("ignore") # Disable warnings if division by 0
     
     for y_feature in features:
         
@@ -231,11 +263,12 @@ def vif_selection(df_input:pd.DataFrame, maxvif:float=5.0) -> dict:
     """Variable selection using Variance Inflation Factor (VIF) threshold.
 
     Args:
-        df_input (pd.DataFrame): Input dataframe upon which VIF selection is performed.
-        maxvif (float, optional): VIF score used to select variables. Defaults to 0.8.
+        df_input (pd.DataFrame): Input dataframe.
+        maxvif (float, optional): Maximum VIF score. Defaults to 0.8.
 
     Returns:
-        dict: Dictionary containing correlated and independent features with their VIF scores.
+        dict: Dictionary containing correlated and independent features with 
+        their VIF scores.
     """
     
     # Create a deep copy of the input DataFrame
@@ -249,8 +282,9 @@ def vif_selection(df_input:pd.DataFrame, maxvif:float=5.0) -> dict:
     correlated = {}
     while vif_values[0] > maxvif:
 
-        # Initialize tuple to evaluate which feature (among those with max VIF) that should be removed,
-        # based on the maximum VIF, number of maximum VIFs and second maximum VIF after feature removal
+        # Initialize tuple to evaluate which feature (among those with max VIF) 
+        # that should be removed, based on the maximum VIF, number of maximum 
+        # VIFs and second maximum VIF after feature removal.
         collinear_feature = {'feature':maxvif_features[0],
                              'maxvif':np.inf,
                              'n_features_maxvif':len(df.columns),
@@ -263,7 +297,8 @@ def vif_selection(df_input:pd.DataFrame, maxvif:float=5.0) -> dict:
             vif_values = np.sort(np.unique(np.asarray(vif.values).flatten()))[::-1]
             n_features_maxvif = np.sum(vif.values==vif_values[0])
 
-            # Check if VIF analysis is producing lower values when removing the feature
+            # Check if VIF analysis is producing lower values when removing the 
+            # feature
             if (collinear_feature['maxvif'] > vif_values[0]) or \
                ((collinear_feature['maxvif'] == vif_values[0]) and \
                (collinear_feature['n_features_maxvif'] > n_features_maxvif)) or \
@@ -299,19 +334,34 @@ def tabular_list(input:list, n_cols:int = 3, **kwargs) -> str:
 
     Args:
         input_list (list): List of items to format.
-        n_cols (int, optional): Number of columns to segment the list. Defaults to 3.
+        n_cols (int, optional): Number of columns to print. Defaults to 3.
 
     Returns:
         str: String with the list shown as a table.
     """
 
-    input_list = input.copy()
+    input_list = input.copy() 
 
-    hsep = kwargs.get('hsep', 4) # Get horizontal separation between columns. Defaults to 4.
-    col_sep = kwargs.get('col_sep', f'') # Get column separator string. Defaults to empty
-    alignment = kwargs.get('alignment', '<') # Get text alignment. Defaults to < (left).
-    max_len = kwargs.get('max_len', max([len(item) for item in input_list])) # Get maximum length allowed for the items. Defaults to 30.
-    axis = kwargs.get('axis', 1) # Get display order (0 for columns, 1 for rows)
+    # Get column separator string. Defaults to empty.
+    col_sep = kwargs.get('col_sep', f'') 
+
+    # Get horizontal separation between columns. Defaults to 4.
+    hsep = kwargs.get('hsep', len(col_sep)+2)
+
+    # Get text alignment. Defaults to < (left).
+    alignment = kwargs.get('alignment', '<') 
+
+    # Get maximum number of chars allowed per column to not exceed 80 chars 
+    # width.
+    chars_per_col = (80-(n_cols-1)*hsep)//n_cols
+    if chars_per_col > 6:
+        # Get maximum length allowed for the items. Defaults to 30.
+        max_len = kwargs.get('max_len', chars_per_col)
+    else:
+        max_len = kwargs.get('max_len', min([len(item) for item in input_list]))
+
+    # Get display order (0 for columns, 1 for rows).
+    axis = kwargs.get('axis', 1) 
 
     # Shorten item of list if it exceeds max_len parameter
     for i, item in enumerate(input_list):
@@ -352,11 +402,16 @@ class progressbar():
     def __init__(self, iterations, description="", desc_loc='left'):
 
         # Define list of sectors and range of values they apply to
-        self.sectors_list = list(['', '\u258F', '\u258D', '\u258C', '\u258B', '\u258A', '\u2589', '\u2588'])
+        self.sectors_list = list(['', '\u258F', '\u258D', '\u258C', '\u258B', 
+                                  '\u258A', '\u2589', '\u2588'])
         self.sectors_range = np.linspace(0,1,8)
 
         self.iterations = iterations
-        self.n_iterations = self.iterations if isinstance(self.iterations, int) else len(self.iterations)
+
+        if isinstance(self.iterations, np.integer):
+            self.n_iterations = self.iterations
+        else: 
+            self.n_iterations = len(self.iterations)
         self.description = description
         self.desc_loc = desc_loc
         self.log = ""
@@ -389,47 +444,75 @@ class progressbar():
             return f'{int(h):02d}:{int(m):02d}:{int(s):02d}'
 
     
-    def refresh(self, i, description:str = None):
+    def refresh(self, i, description:str = None, last_iteration:bool = True):
 
         # Update description if new description is given
-        self.description = self.description if description==None else description
+        if description == None:
+            self.description = self.description  
+        else: 
+            self.description = description
         
-
-        if i>self.i:
+        if i > self.i:
 
             self.i = i
 
-            # Get duration of iteration, average of duration per iteration and iterations per second.
-            self.it_duration = time.time()-self.it_start_time if self.i > 1 else 0.0
+            # Get duration of iteration, average of duration per iteration and 
+            # iterations per second.
+            self.it_duration = time.time() - self.it_start_time \
+                               if self.i > 1 else 0.0
             self.its_per_second = 1.0/self.it_duration if self.i > 1 else 0.0
 
-            self.avg_it_duration = (self.avg_it_duration*(self.i-1)+self.it_duration)/self.i if self.i > 2 else self.it_duration
+            self.avg_it_duration = (self.avg_it_duration*(self.i - 1) + \
+                self.it_duration) / self.i if self.i > 2 else self.it_duration
             
-            # Compute estimated remaining time and overall duration.
-            self.estimated_remaining_time = self.avg_it_duration*(self.n_iterations-self.i) if self.i > 1 else 0.0
-            self.estimated_duration = self.avg_it_duration*self.n_iterations if self.i > 1 else 0.0
+            # Compute estimated time remaining and overall duration.
+            self.etr = self.avg_it_duration * \
+                (self.n_iterations - self.i) if self.i > 1 else 0.0
+            self.estimated_duration = self.avg_it_duration * self.n_iterations \
+                if self.i > 1 else 0.0
 
             # Update iteration start time
             self.it_start_time = time.time()
 
         # Calculate how many entire sectors and type of subsector to display 
         progress, subprogress = self.get_progress()
-        sectors     = self.sectors_list[-1]*progress
-        subsector   = self.sectors_list[np.sum(self.sectors_range<=subprogress)-1]
+        sectors   = self.sectors_list[-1]*progress
 
-        # Create log concatenating the description and defining the end of the print log depending on the number of iteration
-        log = f' {self.progress*100:>3.0f}%' + \
-              f' |{sectors}{subsector}{" "*(10-len(sectors)-len(subsector))}|' + \
-              f' {i:>{om(self.n_iterations)}}/{self.n_iterations:<{om(self.n_iterations)}}' + \
-              f' | Remaining time: {self.format_time(self.estimated_remaining_time)}' + \
-              f' ({self.its_per_second:>{om(self.its_per_second) if om(self.its_per_second)>=1 else 1}.2f} it/s) '
+        # Get number of 8th sections as subsectors
+        idx_subsector = np.sum(self.sectors_range <= subprogress) - 1
+        subsector = self.sectors_list[idx_subsector]
 
-        log = self.description + log if self.desc_loc=='left' else f'>' + log + self.description
+        # Get order of magnitude of the number of iterations and number of 
+        # iterations per second to improve readability of the log message.
+        om_iterations = om(self.n_iterations)
+        if om(self.its_per_second) >= 1:
+            om_iter_per_sec = om(self.its_per_second)
+        else:
+            om_iter_per_sec =  1
 
-        # Ensure next log has the same characters so that no residuals from previous log are left in the screen.
-        self.log = log + f'{" "*(len(self.log)-len(log))}' if len(self.log)>len(log) else log
+        # Create log concatenating the description and defining the end of the 
+        # print log depending on the number of iteration
+        log = f' {self.progress*100:>3.0f}% ' + \
+            f'|{sectors}{subsector}{" "*(10-len(sectors)-len(subsector))}|' + \
+            f' {i:>{om_iterations}}/{self.n_iterations:<{om_iterations}} ' + \
+            f'| Remaining time: {self.format_time(self.etr)} ' + \
+            f'({self.its_per_second:>{om_iter_per_sec}.2f} it/s) '
 
-        end = '\n' if i==self.n_iterations else '\r'
+        # Locate the description message to the left or right.
+        if self.desc_loc=='left':
+            log = self.description + log  
+        else:
+            log = f'>' + log + self.description
+
+        # Ensure next log has the same number of characters to so that no 
+        # residuals from previous log are left in the screen.
+        if len(self.log) > len(log):
+            self.log = log + f'{" "*(len(self.log)-len(log))}'
+        else:
+            self.log = log
+
+        # Determine end character depending on the number of iterations.
+        end = '\n' if (i==self.n_iterations and last_iteration) else '\r'
         
         # Print progress log
-        print(self.log, end=end)
+        print(self.log, end = end)
