@@ -151,7 +151,7 @@ class FeatureForecaster(nn.Module):
         
         return x
 #%%
-def event_ts_sets(feature_seq:np.ndarray, time_seq:np.ndarray):  
+def event_ts_sets(feature_seq:np.ndarray, time_seq:np.ndarray, steps:int = 1):  
     """Get all possible Time-Series subsets (sequence->target) from a complete 
     Time-Series set associated to an event.
 
@@ -166,31 +166,21 @@ def event_ts_sets(feature_seq:np.ndarray, time_seq:np.ndarray):
     """
 
     # Get number of TS sets to extract from the full sequence. 
-    n = len(feature_seq) - 2
+    n = len(feature_seq) - (steps+1)
 
     # Initialize Time-Series sets list containing tuples with sequence-target
     # for a given event.
-    ts_sets = []
-    seq_tensor = torch.empty((n, 3), dtype=torch.float32)
-    target_tensor = torch.empty((n, 2), dtype=torch.float32)
+    ff_sets = []
 
     # Create the list of Time-Series sets using a loop.
     for i in range(n):
 
-        # Get sequence and target value for element i
-        seq_tensor[i] = torch.from_numpy(np.append(feature_seq[i:i+2],
-                           np.abs(time_seq[i+1]-time_seq[i])))
+        # Get inputs and target value for element i
+        input_tensor  = np.append(feature_seq[i:i+steps+1], time_seq[i:i+steps+1])
+        output_tensor = np.append(feature_seq[i+steps], time_seq[i+steps])
 
-        target_tensor[i] = torch.from_numpy(np.append(feature_seq[i+2],
-                            np.abs(time_seq[i+2]-time_seq[i+1])))
+        # Convert numpy arrays to PyTorch tensors and add it to the final tensor
+        ff_sets.append((torch.from_numpy(input_tensor), 
+                        torch.from_numpy(output_tensor)))
 
-
-        # seq_i  = np.append(feature_seq[i:i+2],
-        #                    np.abs(time_seq[i+1]-time_seq[i]))
-        # target_i  = np.append(feature_seq[i+2],
-        #                       np.abs(time_seq[i+2]-time_seq[i+1]))
-
-        # Add tuple to the output list
-        # ts_sets.append((seq_i, target_i))
-
-    return seq_tensor, target_tensor
+    return ff_sets
