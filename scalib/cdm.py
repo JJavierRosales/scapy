@@ -44,6 +44,14 @@ class ConjunctionDataMessage():
                 setattr(self, '_values_object_' + cluster, 
                         [dict_values, dict_values])
 
+<<<<<<< HEAD
+=======
+        for cluster, keys in cdm_clusters_obligatory.items():
+            # Set clusters of CDM fields (header, relative_metadata, ... etc.)
+            # containing the list of features embeded in every cluster.
+            setattr(self, '_keys_' + cluster, keys)
+
+>>>>>>> dev
         # This holds extra key, value pairs associated with each CDM object, 
         # used internally by the Kessler codebase and not a part of the CDM 
         # standard

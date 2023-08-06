@@ -15,8 +15,13 @@ import matplotlib.pyplot as plt
 import sys
 
 from . import utils
+<<<<<<< HEAD
 from .cdm import ConjunctionDataMessage
 from .event import Event, EventDataset
+=======
+from .cdm import ConjunctionDataMessage as CDM
+from .event import ConjunctionEvent, ConjunctionEventsDataset
+>>>>>>> dev
 
 
 class DatasetEventDataset(Dataset):
@@ -333,8 +338,17 @@ class ConjunctionEventForecaster(nn.Module):
             total_iters = 0
         else:
             total_iters = self._hist_train_loss_iters[-1]
+<<<<<<< HEAD
             
         for epoch in range(epochs):
+=======
+
+        pb_epochs = utils.ProgressBar(iterations=range(epochs), 
+            description = 'Training Feature Forecaster model...', 
+            desc_loc='right')
+            
+        for epoch in pb_epochs.iterations:
+>>>>>>> dev
             with torch.no_grad():
                 for _, (events, event_lengths) in enumerate(valid_loader):
 
@@ -421,6 +435,7 @@ class ConjunctionEventForecaster(nn.Module):
                 # Convert loss from the training dataset to numpy and store it.
                 
                 self._hist_train_loss_iters.append(total_iters)
+<<<<<<< HEAD
                 
 
                 print(f'Iteration {total_iters} | '
@@ -441,6 +456,31 @@ class ConjunctionEventForecaster(nn.Module):
 
         Args:
             event (Event): Conjunction Event object containing CDM(s) object(s).
+=======
+
+                description = f'Iterations {total_iters} | ' + \
+                    f'Minibatch {i_minibatch+1}/{len(train_loader)} | ' + \
+                    f'Training loss {train_loss:.4e} | ' + \
+                    f'Validation loss {valid_loss:.4e}'
+                
+                pb_epochs.refresh(i = epoch+1, description = description, 
+                    nested_progress = True)
+
+
+            if filename_prefix is not None:
+                filename = filename_prefix + '_epoch_{}'.format(epoch+1)
+                description = f'Saving model checkpoint to file {filename}'
+                pb_epochs.refresh(i = epoch, description = description, 
+                    nested_progress = True)
+                self.save(filename)
+
+    def predict(self, event: ConjunctionEvent) -> ConjunctionDataMessage:
+        """Predict next CDM object from a given ConjunctionEvent object.
+
+        Args:
+            event (ConjunctionEvent): Conjunction Event object containing CDM(s) 
+            object(s).
+>>>>>>> dev
 
         Raises:
             RuntimeError: _description_
@@ -449,7 +489,11 @@ class ConjunctionEventForecaster(nn.Module):
             ConjunctionDataMessage: CDM object.
         """
 
+<<<<<<< HEAD
         ds = DatasetEventDataset(EventDataset(events=[event]), 
+=======
+        ds = DatasetEventDataset(ConjunctionEventsDataset(events=[event]), 
+>>>>>>> dev
                                  features = self._features, 
                                  features_stats = self._features_stats)
         
@@ -476,7 +520,12 @@ class ConjunctionEventForecaster(nn.Module):
 
         output_last = output if output.ndim == 1 else output[-1]
  
+<<<<<<< HEAD
         # Get creation date from first CDM object contained in the Event.
+=======
+        # Get creation date from first CDM object contained in the Conjunction 
+        # Event.
+>>>>>>> dev
         date0 = event[0]['CREATION_DATE']
 
         # Initialize new CDM object to store de-normalized values resulting from 
@@ -509,6 +558,7 @@ class ConjunctionEventForecaster(nn.Module):
 
         return cdm
 
+<<<<<<< HEAD
     def predict_event_step(self, event:Event, num_samples:int = 1) \
         -> Union[Event, EventDataset]:
         """Predict next CDM n-times for a given event object.
@@ -523,6 +573,23 @@ class ConjunctionEventForecaster(nn.Module):
              - If num_samples = 1: Returns one Event object with all CDMs 
                 forecasted. 
              - If num_samples > 1: Returns EventDataset object containing all 
+=======
+    def predict_event_step(self, event:ConjunctionEvent, num_samples:int = 1) \
+        -> Union[ConjunctionEvent, ConjunctionEventsDataset]:
+        """Predict next CDM n-times for a given event object.
+
+        Args:
+            event (ConjunctionEvent): Conjunction Event object from which the 
+            CDM is forecasted.
+            num_samples (int, optional): Number of predictions. Defaults to 1.
+
+        Returns:
+            Union[ConjunctionEvent, ConjunctionEventsDataset]: Two possible outputs are returned
+            depending on the parameter num_samples:
+             - If num_samples = 1: Returns one ConjunctionEvent object with all CDMs 
+                forecasted. 
+             - If num_samples > 1: Returns ConjunctionEventsDataset object containing all 
+>>>>>>> dev
                 possible evolutions of the event (combinations of CDMs).
         """
 
@@ -536,6 +603,7 @@ class ConjunctionEventForecaster(nn.Module):
             # Predict next CDM of the event.
             cdm = self.predict(i_event)
 
+<<<<<<< HEAD
             # Add CDM object to the Event object.
             i_event.add(cdm)
 
@@ -548,22 +616,49 @@ class ConjunctionEventForecaster(nn.Module):
 
     def predict_event(self, event:Event, num_samples:int = 1, 
                       max_length:int = 22) -> Union[Event, EventDataset]:
+=======
+            # Add CDM object to the ConjunctionEvent object.
+            i_event.add(cdm)
+
+            # Append event to the Conjunction Events list.
+            events.append(i_event)
+
+        # Return Event object or ConjunctionEventsDataset objects.
+        return es[0] if num_samples == 1 \
+            else ConjunctionEventsDataset(events=events)
+            
+
+    def predict_event(self, event:ConjunctionEvent, num_samples:int = 1, 
+                      max_length:int = 22) -> Union[ConjunctionEvent, ConjunctionEventsDataset]:
+>>>>>>> dev
         """Forecast the evolution of a given Conjunction Event by predicting 
         upcoming CDMs until TCA.
 
         Args:
+<<<<<<< HEAD
             event (Event): Event object to forecast.
+=======
+            event (ConjunctionEvent): Conjunction Event to forecast.
+>>>>>>> dev
             num_samples (int, optional): Number of possible CDMs considered in 
             every forecasting step. Defaults to 1.
             max_length (int, optional): Maximum number of CDM objects contained 
             in the event object. Defaults to 22.
 
         Returns:
+<<<<<<< HEAD
             Union[Event, EventDataset]: Two possible outputs are returned
             depending on the parameter num_samples:
              - If num_samples = 1: Returns one Event object with all CDMs 
                 forecasted. 
              - If num_samples > 1: Returns EventDataset object containing all 
+=======
+            Union[ConjunctionEvent, ConjunctionEventsDataset]: Two possible outputs are returned
+            depending on the parameter num_samples:
+             - If num_samples = 1: Returns one ConjunctionEvent object with all CDMs 
+                forecasted. 
+             - If num_samples > 1: Returns ConjunctionEventsDataset object containing all 
+>>>>>>> dev
                 possible evolutions of the event (combinations of CDMs).
         """
 
@@ -571,9 +666,15 @@ class ConjunctionEventForecaster(nn.Module):
         events = []
 
         # Iterate over all sequences
+<<<<<<< HEAD
         pb_samples = utils.progressbar(iterations = range(num_samples), 
                             desc_loc='right', 
                             description='> Predicting event evolution ...')
+=======
+        pb_samples = utils.progressbar(iterations = range(num_samples),  
+            description='> Forecasting Conjunction Event evolution ...',
+            desc_loc='right')
+>>>>>>> dev
 
         for i in pb_samples.iterations:
 
@@ -588,7 +689,12 @@ class ConjunctionEventForecaster(nn.Module):
             # conditions are reached:
             #  - CDM creation date is later than TCA.
             #  - TCA is later than 7 days.
+<<<<<<< HEAD
             #  - Event contains same number of CDMs equal to max_length.
+=======
+            #  - The conjunction event contains same number of CDMs equal to 
+            #       max_length.
+>>>>>>> dev
             while True:
 
                 # Predict new CDM from i_event and append object to i_event.
@@ -604,9 +710,17 @@ class ConjunctionEventForecaster(nn.Module):
             events.append(i_event)
 
         # Update progress bar.
+<<<<<<< HEAD
         pb_features.refresh(i = i+1, description = '> Event evolution predicted.')
 
         return events[0] if num_samples==1 else EventDataset(events = events)
+=======
+        pb_features.refresh(i = i+1, 
+            description = '> Conjunction Event evolution forecasted.')
+
+        return events[0] if num_samples==1 \
+            else ConjunctionEventsDataset(events = events)
+>>>>>>> dev
 
     def save(self, filepath:str) -> None:
         """Save model to an external file.
@@ -772,7 +886,11 @@ def get_tsf_tensors(df:pd.DataFrame, features:list,
     tsf_tensors = {}
 
     # Iterate over all features to get the time series subsets
+<<<<<<< HEAD
     pb_features = utils.progressbar(iterations = range(len(features)), 
+=======
+    pb_features = utils.ProgressBar(iterations = range(len(features)), 
+>>>>>>> dev
                                     desc_loc='right')
     for f in pb_features.iterations:
 
@@ -830,7 +948,11 @@ def get_tsf_tensors(df:pd.DataFrame, features:list,
                           f' into external file {"."*(len(description)-64)}'
             torch.save(tsf_tensors[feature], os.path.join(rootpath, filename))
             pb_features.refresh(i = f+1, description = description, 
+<<<<<<< HEAD
                                 last_iteration = False)
+=======
+                                nested_progress = True)
+>>>>>>> dev
 
     # Print final message
     pb_features.refresh(i = f+1, 
@@ -896,7 +1018,11 @@ def tsf_iotensors(tsf_tensors:dict, features:list, seq_length:int,
                               dtype=torch.float32)    
 
     # Iterate over all sequences
+<<<<<<< HEAD
     pb_sequences = utils.progressbar(iterations = range(batch_size), 
+=======
+    pb_sequences = utils.ProgressBar(iterations = range(batch_size), 
+>>>>>>> dev
                         desc_loc='right', 
                         description='> Getting training and target tensors ...')
     for b in pb_sequences.iterations:
