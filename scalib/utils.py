@@ -6,10 +6,62 @@ import time
 import scipy.stats as st
 from typing import Union
 from sklearn.linear_model import LinearRegression
+import datetime
 
 
 #%%
-@functools.lru_cache(maxsize=None)
+def docstring(item, internal_attr:bool=False, builtin_attr:bool=False) -> None:
+    """Print DocString from a specific Module, Class, or Function.
+
+    Args:
+        item (_type_): Module, Class, or Function to print documentation from. 
+        internal_attr (bool, optional): Flag to include internal attributes. 
+        Defaults to False.
+        builtin_attr (bool, optional): Flag to include built-in attributes. 
+        Defaults to False.
+    """
+
+    # Initialize methods list.
+    methods = []
+
+    # Iterate over all methods available in the item.
+    for method in dir(item):
+        if (method.startswith('_') and internal_attr) or \
+           (method.startswith('__') and builtin_attr) or \
+            not method.startswith('_'):
+            methods.append(method)
+
+    # Sort methods by alphabetic order
+    methods = sorted(set(methods))
+
+    for method in methods:  
+        print('Method: {}\n\n{}\n{}' \
+            .format(method,getattr(item, method).__doc__, "_"*80))
+#%%
+def plt_matrix(num_subplots:int) -> tuple:
+    """Calculate number of rows and columns for a square matrix 
+    containing subplots.
+
+    Args:
+        num_subplots (int): Number of subplots contained in the matrix.
+
+    Returns:
+        tuple: Number of rows and columns of the matrix.
+    """
+    if num_subplots < 5:
+        return 1, num_subplots
+    else:
+        cols = math.ceil(math.sqrt(num_subplots))
+        rows = 0
+        while num_subplots > 0:
+            rows += 1
+            num_subplots -= cols
+            
+        return rows, cols
+#%%
+def from_datetime_to_cdm_datetime_str(datetime:datetime) -> str:
+    return datetime.strftime('%Y-%m-%dT%H:%M:%S.%f')
+#%%
 def from_date_str_to_days(date, date0='2020-05-22T21:41:31.975', date_format='%Y-%m-%dT%H:%M:%S.%f'):
     date = datetime.datetime.strptime(date, date_format)
     date0 = datetime.datetime.strptime(date0, date_format)
@@ -131,9 +183,19 @@ def tile_rows_cols(num_items):
             num_items -= cols
         return rows, cols
 #%%
-def add_days_to_date_str(date0, days):
+def add_days_to_date_str(date0:datetime, days:float) -> str:
+    """Add/Substract natural date from initial date.
+
+    Args:
+        date0 (datetime): Initial date.
+        days (float): Natural days to add/substract.
+
+    Returns:
+        str: Datetime as a string.
+    """
     date0 = datetime.datetime.strptime(date0, '%Y-%m-%dT%H:%M:%S.%f')
     date = date0 + datetime.timedelta(days=days)
+
     return from_datetime_to_cdm_datetime_str(date)
 #%%
 def transform_date_str(date_string, date_format_from, date_format_to):
@@ -544,27 +606,27 @@ def tabular_list(input:list, n_cols:int = 3, **kwargs) -> str:
 #%%
 
 # Define progressbar class
-class progressbar():
-    def __init__(self, iterations, description="", desc_loc='left'):
+class ProgressBar():
+    def __init__(self, iterations:int, description:str="", desc_loc:str='left'):
 
         # Define list of sectors and range of values they apply to
-        self.sectors_list = list(['', '\u258F', '\u258D', '\u258C', '\u258B', 
+        self._sectors_list = list(['', '\u258F', '\u258D', '\u258C', '\u258B', 
                                   '\u258A', '\u2589', '\u2588'])
-        self.sectors_range = np.linspace(0,1,8)
+        self._sectors_range = np.linspace(0,1,8)
 
         self.iterations = iterations
 
         if isinstance(self.iterations, np.integer):
-            self.n_iterations = self.iterations
+            self._n_iterations = self.iterations
         else: 
-            self.n_iterations = len(self.iterations)
+            self._n_iterations = len(self.iterations)
         self.description = description
-        self.desc_loc = desc_loc
-        self.log = ""
-        self.i = 0
+        self._desc_loc = desc_loc
+        self._log = ""
+        self._i = 0
 
         # Initialize start time of iteration
-        self.it_start_time = None
+        self._it_start_time = time.time()
 
         # Initialize average duration of iteration
         self.avg_it_duration = 0.0
@@ -573,13 +635,13 @@ class progressbar():
     def get_progress(self):
 
         # Compute progress (0 to 100) and subprogress (0 to 1)
-        self.progress = (self.i/self.n_iterations)
-        progress = int(((self.i/self.n_iterations)*100//10))
-        subprogress = (self.i/self.n_iterations*100 - progress*10)/10
+        self._progress = (self._i/self._n_iterations)
+        progress = int(((self._i/self._n_iterations)*100//10))
+        subprogress = (self._i/self._n_iterations*100 - progress*10)/10
 
         return (progress, subprogress)
 
-    def format_time(self, duration):
+    def format_time(self, duration:float) -> str:
 
         m, s = divmod(duration, 60)
         h, m = divmod(m, 60)
@@ -590,7 +652,8 @@ class progressbar():
             return f'{int(h):02d}:{int(m):02d}:{int(s):02d}'
 
     
-    def refresh(self, i, description:str = None, last_iteration:bool = True):
+    def refresh(self, i:int, description:str = None, 
+            nested_progress:bool = False) -> None:
 
         # Update description if new description is given
         if description == None:
@@ -598,67 +661,67 @@ class progressbar():
         else: 
             self.description = description
         
-        if i > self.i:
+        if i > self._i:
 
-            self.i = i
+            self._i = i
 
             # Get duration of iteration, average of duration per iteration and 
             # iterations per second.
-            self.it_duration = time.time() - self.it_start_time \
-                               if self.i > 1 else 0.0
-            self.its_per_second = 1.0/self.it_duration if self.i > 1 else 0.0
+            self._it_duration = time.time() - self._it_start_time \
+                               if self._i > 1 else 0.0
+            self._its_per_second = 1.0/self._it_duration if self._i > 1 else 0.0
 
-            self.avg_it_duration = (self.avg_it_duration*(self.i - 1) + \
-                self.it_duration) / self.i if self.i > 2 else self.it_duration
+            self.avg_it_duration = (self.avg_it_duration*(self._i - 1) + \
+                self._it_duration)/self._i if self._i > 2 else self._it_duration
             
             # Compute estimated time remaining and overall duration.
             self.etr = self.avg_it_duration * \
-                (self.n_iterations - self.i) if self.i > 1 else 0.0
-            self.estimated_duration = self.avg_it_duration * self.n_iterations \
-                if self.i > 1 else 0.0
+                (self._n_iterations - self._i) if self._i > 1 else 0.0
+            self.estimated_duration = self.avg_it_duration*self._n_iterations \
+                if self._i > 1 else 0.0
 
             # Update iteration start time
-            self.it_start_time = time.time()
+            self._it_start_time = time.time()
 
         # Calculate how many entire sectors and type of subsector to display 
         progress, subprogress = self.get_progress()
-        sectors   = self.sectors_list[-1]*progress
+        sectors   = self._sectors_list[-1]*progress
 
         # Get number of 8th sections as subsectors
-        idx_subsector = np.sum(self.sectors_range <= subprogress) - 1
-        subsector = self.sectors_list[idx_subsector]
+        idx_subsector = np.sum(self._sectors_range <= subprogress) - 1
+        subsector = self._sectors_list[idx_subsector]
 
         # Get order of magnitude of the number of iterations and number of 
         # iterations per second to improve readability of the log message.
-        om_iterations = om(self.n_iterations)
-        if om(self.its_per_second) >= 1:
-            om_iter_per_sec = om(self.its_per_second)
+        om_iterations = om(self._n_iterations)
+        if om(self._its_per_second) >= 1:
+            om_iter_per_sec = om(self._its_per_second)
         else:
             om_iter_per_sec =  1
 
         # Create log concatenating the description and defining the end of the 
         # print log depending on the number of iteration
-        log = f' {self.progress*100:>3.0f}% ' + \
+        log = f' {self._progress*100:>3.0f}% ' + \
             f'|{sectors}{subsector}{" "*(10-len(sectors)-len(subsector))}|' + \
-            f' {i:>{om_iterations}}/{self.n_iterations:<{om_iterations}} ' + \
+            f' {i:>{om_iterations}}/{self._n_iterations:<{om_iterations}} ' + \
             f'| Remaining time: {self.format_time(self.etr)} ' + \
-            f'({self.its_per_second:>{om_iter_per_sec}.2f} it/s) '
+            f'({self._its_per_second:>{om_iter_per_sec}.2f} it/s) '
 
         # Locate the description message to the left or right.
-        if self.desc_loc=='left':
+        if self._desc_loc=='left':
             log = self.description + log  
         else:
             log = f'>' + log + self.description
 
         # Ensure next log has the same number of characters to so that no 
         # residuals from previous log are left in the screen.
-        if len(self.log) > len(log):
-            self.log = log + f'{" "*(len(self.log)-len(log))}'
+        if len(self._log) > len(log):
+            self._log = log + f'{" "*(len(self._log)-len(log))}'
         else:
-            self.log = log
+            self._log = log
 
         # Determine end character depending on the number of iterations.
-        end = '\n' if (i==self.n_iterations and last_iteration) else '\r'
+        end = '\n' if (i==self._n_iterations and not nested_progress) else '\r'
         
         # Print progress log
-        print(self.log, end = end)
+        print(self._log, end = end)
