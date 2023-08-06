@@ -287,7 +287,7 @@ class ConjunctionEvent(EventsPlotting):
         # Plot data 
         ax.plot(data_x, data_y, marker='.', *args, **kwargs)
         
-        
+        # Plot grid.
         ax.grid(True, linestyle='--')
 
         # Set Axes limits
@@ -626,7 +626,27 @@ class ConjunctionEventsDataset(EventsPlotting):
 
         return events_cdms
 
-    def plot_event_lengths(self, figsize:tuple = (6, 4), filepath:str = None, 
+    @property
+    def event_lengths(self):
+        return list(map(len, self._events))
+
+    @property
+    def event_lengths_min(self):
+        return min(self.event_lengths)
+
+    @property
+    def event_lengths_max(self):
+        return max(self.event_lengths)
+
+    @property
+    def event_lengths_mean(self):
+        return np.array(self.event_lengths).mean()
+
+    @property
+    def event_lengths_stddev(self):
+        return np.array(self.event_lengths).std()
+
+    def plot_event_lengths(self, figsize:tuple = (7, 3), filepath:str = None, 
         *args, **kwargs) -> None:
         """Plot histogram with the number of events producing a number n of CDMs.
 
@@ -639,17 +659,25 @@ class ConjunctionEventsDataset(EventsPlotting):
         fig, ax = plt.subplots(figsize = figsize)
 
         # Get number of CDMs per event using the custom porperty event_lengths.
-        event_lengths = self.event_lengths()
+        event_lengths = self.event_lengths
 
         # Plot histogram with the number of CDMs:
         #  - X axis: Number of CDMs is represented (1, 2, ... max_events_length)
         #  - Y axis: Number of events containing that number of CDMs.
-        ax.hist(event_lengths, *args, **kwargs)
+
+        labels, counts = np.unique(event_lengths, return_counts=True)
+        ax.bar(labels, counts, align='center')
+        # ax.hist(event_lengths, bins=np.arange(1,23), align='mid', *args, **kwargs)
+
+        ax.set_xticks(labels)
 
         # Set title, and X and Y axis labels.
         ax.set_title(r'Conjunction Data Messages histogram.')
         ax.set_xlabel(r'Number of CDMs')
         ax.set_ylabel(r'Number of Conjunction Events')
+
+        # Set grid.
+        ax.grid(True, linestyle='--')
 
         # Save figure if path is provided.
         if filepath is not None:
