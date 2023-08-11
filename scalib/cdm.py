@@ -599,7 +599,9 @@ class ConjunctionDataMessage():
                 self.set_object(object_id, 
                                 f'C{i_rtn}_{j_rtn}',
                                 covariance[i, j])
-
+    @staticmethod
+    def datetime_to_str(input_datetime:datetime) -> str:
+        return input_datetime.strftime('%Y-%m-%dT%H:%M:%S.%f')
 
     def validate(self) -> None:
         """Check all compulsary data in CDM is provided.
@@ -696,9 +698,9 @@ class ConjunctionDataMessage():
                 values = getattr(self, '_values_' + cluster)
                 content = append(content, values, obligatory_keys)
             else:
-                values = getattr(self, '_values_object_' + cluster)
-                for object_values in values:
-                    content = append(content, object_values, obligatory_keys)
+                object_values = getattr(self, '_values_object_' + cluster)
+                for values in object_values:
+                    content = append(content, values, obligatory_keys)
 
         return content
 

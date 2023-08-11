@@ -61,9 +61,7 @@ def plt_matrix(num_subplots:int) -> tuple:
             num_subplots -= cols
             
         return rows, cols
-#%%
-def from_datetime_to_cdm_datetime_str(datetime:datetime) -> str:
-    return datetime.strftime('%Y-%m-%dT%H:%M:%S.%f')
+        
 #%%
 >>>>>>> dev
 def from_date_str_to_days(date, date0='2020-05-22T21:41:31.975', date_format='%Y-%m-%dT%H:%M:%S.%f'):
@@ -685,9 +683,9 @@ class ProgressBar():
                 self._it_duration)/self._i if self._i > 2 else self._it_duration
             
             # Compute estimated time remaining and overall duration.
-            self.etr = self.avg_it_duration * \
+            self.ert = self.avg_it_duration * \
                 (self._n_iterations - self._i) if self._i > 1 else 0.0
-            self.estimated_duration = self.avg_it_duration*self._n_iterations \
+            self.edt = self.avg_it_duration*self._n_iterations \
                 if self._i > 1 else 0.0
 
             # Update iteration start time
@@ -709,13 +707,25 @@ class ProgressBar():
         else:
             om_iter_per_sec =  1
 
+        # Check if it is the last iteration.
+        last_iter = (i==self._n_iterations and not nested_progress)
+
         # Create log concatenating the description and defining the end of the 
         # print log depending on the number of iteration
-        log = f' {self._progress*100:>3.0f}% ' + \
-            f'|{sectors}{subsector}{" "*(10-len(sectors)-len(subsector))}|' + \
-            f' {i:>{om_iterations}}/{self._n_iterations:<{om_iterations}} ' + \
-            f'| Remaining time: {self.format_time(self.etr)} ' + \
-            f'({self._its_per_second:>{om_iter_per_sec}.2f} it/s) '
+        pb_progress = f'{self._progress*100:>3.0f}%'
+        pb_bar = f'|{sectors}{subsector}{" "*(10-len(sectors)-len(subsector))}|'
+        pb_counter=f'{i:>{om_iterations}}/{self._n_iterations:<{om_iterations}}'
+        pb_iter = f'{self._its_per_second:>{om_iter_per_sec}.2f} it/s'
+        pb_time = f'Total time:     {self.format_time(self.edt)}' if last_iter \
+             else f'Remaining time: {self.format_time(self.ert)}'
+        
+
+        log = ' {:>4}'.format(pb_progress) + \
+              ' {}'.format(pb_bar) + \
+              ' ({0:>{1}})'.format(pb_counter, (om_iterations+1)*2+1) + \
+              ' | {0:<{1}}'.format(pb_time, 21) + \
+              ' ({0:>{1}})'.format(pb_iter, om_iter_per_sec + 5) + \
+              ' '
 
         # Locate the description message to the left or right.
         if self._desc_loc=='left':
