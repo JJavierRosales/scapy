@@ -1,3 +1,7 @@
+# Libraries used for hinting
+from __future__ import annotations
+from typing import Type, Union
+
 
 import os
 import pandas as pd
@@ -7,15 +11,181 @@ import scipy.stats as st
 import numpy as np
 import warnings
 import matplotlib.pyplot as plt
+from datetime import datetime, timedelta
 
 from . import utils
 
 from sklearn.metrics import r2_score
 
-# Import function to clear output
-from IPython.display import clear_output
 
-from typing import Union
+#%%
+from .cdm import CDM
+from .event import ConjunctionEvent, ConjunctionEventsDataset
+
+def kelvins_challenge_events(filepath:str, num_events:int = None, 
+        date_tca:datetime = None, remove_outliers:bool = True, 
+        drop_features:list = ['c_rcs_estimate', 't_rcs_estimate']) \
+            -> ConjunctionEventsDataset:
+    """Import Kelvins Challenge dataset as a ConjunctionEventsDataset object.
+
+    Args:
+        filepath (str): Path where Kelvins dataset is located.
+        num_events (int, optional): Number of events to import. Defaults to None.
+        date_tca (datetime, optional): _description_. Defaults to None.
+        remove_outliers (bool, optional): Flag to remove outliers. Defaults to 
+        True.
+        drop_features (list, optional): List of features from original dataset 
+        to remove. Defaults to ['c_rcs_estimate', 't_rcs_estimate'].
+
+    Returns:
+        ConjunctionEventsDataset: Object containing all Events objects.
+    """
+
+    # Import Kelvins dataset using pandas.
+    print('Loading Kelvins Challenge dataset from external file ...', end='\r')
+    kelvins = pd.read_csv(filepath)
+    print('Kelvins Challenge dataset imported from external file ' + \
+          '({} entries):\n{}\n'.format(len(kelvins), filepath))
+
+    utils.tabular_list(drop_features,n_cols=1)
+    # Drop features if passed to the function
+    if len(drop_features)>0:
+        kelvins = kelvins.drop(drop_features, axis=1)
+        print('Features removed:\n{}' \
+            .format(utils.tabular_list(drop_features, n_cols=2, col_sep=' - ')))
+
+    # Remove rows containing NaN values.
+    print('Dropping rows with NaNs...', end='\r')
+    kelvins = kelvins.dropna()
+    print(f'Dropping rows with NaNs... {len(kelvins)} entries remaining.')
+
+    if remove_outliers:
+
+        print('Removing outliers...', end='\r')
+        kelvins = kelvins[kelvins['t_sigma_r'] <= 20]
+        kelvins = kelvins[kelvins['c_sigma_r'] <= 1000]
+        kelvins = kelvins[kelvins['t_sigma_t'] <= 2000]
+        kelvins = kelvins[kelvins['c_sigma_t'] <= 100000]
+        kelvins = kelvins[kelvins['t_sigma_n'] <= 10]
+        kelvins = kelvins[kelvins['c_sigma_n'] <= 450]
+
+        print(f'Removing outliers... {len(kelvins)} entries remaining.')
+
+    # Shuffle data.
+    kelvins = kelvins.sample(frac=1, axis=1).reset_index(drop=True)
+
+    # Get CDMs grouped by event_id
+    kelvins_events = kelvins.groupby('event_id').groups
+    print('Grouped rows into {} events'.format(len(kelvins_events)))
+
+    # Get TCA as current datetime (not provided in Kelvins dataset).
+    if date_tca is None: date_tca = datetime.now()
+    print('Taking TCA as current time: {}\n'.format(date_tca))
+
+    # Get number of events to import from Kelvins dataset.
+    num_events = len(kelvins_events) if num_events is None \
+        else min(num_events, len(kelvins_events))
+
+    # Initialize array of RTN reference frame for position and velocity.
+    rtn_components = ['R', 'T', 'N', 'RDOT', 'TDOT', 'NDOT']
+
+    # Iterate over all features to get the time series subsets
+    pb_events = utils.ProgressBar(iterations = range(num_events), 
+                    description='Importing Events from Kelvins dataset...', 
+                    desc_loc='right')
+
+    # Initialize counter for progressbar
+    n = 0
+
+    # Initialize events list to store all Event objects.
+    events = []
+
+    # Iterate over all events in Kelvins dataset
+    for event_id, rows in kelvins_events.items():
+
+        # Update counter for progress bar.
+        n += 1
+        if n > num_events: break
+
+        # Initialize CDM list to store all CDMs contained in a single event.
+        event_cdms = []
+
+        # Iterate over all CDMs in the event.
+        for _, k_cdm in kelvins.iloc[rows].iterrows():
+
+            # Initialize CDM object.
+            cdm = CDM()
+
+            time_to_tca = k_cdm['time_to_tca']  # days
+            date_creation = date_tca - timedelta(days=time_to_tca)
+
+            cdm['CREATION_DATE'] = CDM.datetime_to_str(date_creation)
+            cdm['TCA'] = CDM.datetime_to_str(date_tca)
+
+            cdm['MISS_DISTANCE'] = k_cdm['miss_distance']
+            cdm['RELATIVE_SPEED'] = k_cdm['relative_speed']
+
+
+            # Get relative state vector components.
+            for state in ['POSITION', 'VELOCITY']:
+                for rtn in rtn_components[:3]:
+                    feature = 'RELATIVE_{}_{}'.format(state, rtn)
+                    cdm[feature] = k_cdm[feature.lower()] 
+
+            # Get object specific compulsory features.
+            for k, v in {'OBJECT1':'t', 'OBJECT2':'c'}.items():
+
+                # Get covariance matrix elements for both objects (lower 
+                # diagonal).
+                for i, i_rtn in enumerate(rtn_components):
+                    for j, j_rtn in enumerate(rtn_components):
+                        if j>i: continue
+
+                        # Get feature label in uppercase
+                        feature = '_C{}_{}'.format(i_rtn, j_rtn)
+
+                        if i_rtn == j_rtn:
+                            cdm[k + feature] = \
+                                k_cdm['{}_sigma_{}' \
+                                      .format(v,i_rtn).lower()]**2.0
+                        else:
+                            cdm[k + feature] = \
+                                k_cdm[v + feature.lower()] * \
+                                k_cdm['{}_sigma_{}'.format(v,j_rtn).lower()] * \
+                                k_cdm['{}_sigma_{}'.format(v,i_rtn).lower()]
+
+                cdm[k+'_RECOMMENDED_OD_SPAN'] = k_cdm[v+'_recommended_od_span']
+                cdm[k+'_ACTUAL_OD_SPAN'] = k_cdm[v+'_actual_od_span']
+                cdm[k+'_OBS_AVAILABLE'] = k_cdm[v+'_obs_available']
+                cdm[k+'_OBS_USED'] = k_cdm[v+'_obs_used']
+                cdm[k+'_RESIDUALS_ACCEPTED'] = k_cdm[v+'_residuals_accepted']
+                cdm[k+'_WEIGHTED_RMS'] = k_cdm[v+'_weighted_rms']
+                cdm[k+'_SEDR'] = k_cdm[v+'_sedr']
+
+                # Get number of days until CDM creation.
+                for t in ['start', 'end']:
+                    time_lastob = k_cdm['{}_time_lastob_{}'.format(v,t)]
+                    time_lastob = date_creation - timedelta(days=time_lastob)
+                    cdm['{}_TIME_LASTOB_{}'.format(k, t).upper()] = \
+                        CDM.datetime_to_str(time_lastob)
+
+            cdm['OBJECT2_OBJECT_TYPE'] = k_cdm['c_object_type']
+
+            # Append CDM object to the event list.
+            event_cdms.append(cdm)
+
+            # Update progress bar
+            pb_events.refresh(i = n, nested_progress = True)
+
+        # Append ConjunctionEvent object to events list.
+        events.append(ConjunctionEvent(event_cdms))
+
+    # Update progress bar.
+    pb_events.refresh(i = n-1, 
+        description = f'{len(events)} Conjunction Events imported.')
+
+    return ConjunctionEventsDataset(events=events)
+
 
 #%%
 def import_cdm_data(filepath: str) -> pd.DataFrame:
@@ -223,9 +393,10 @@ class FitScipyDistribution:
         scale = self.params['scale']
         
         # Get standard data limits for better representation
-        std_lims, std_data, outliers = utils.outliers_boundaries(self.data.flatten(), 
-                                                                threshold = 1.5, 
-                                                                positive_only=False)
+        std_lims, std_data, outliers = \
+            utils.outliers_boundaries(data = self.data.flatten(), 
+                                      threshold = 1.5, 
+                                      positive_only = False)
         
         # Build PDF and turn into pandas Series
         x = np.linspace(std_lims[0], std_lims[1], size)
@@ -236,10 +407,9 @@ class FitScipyDistribution:
         return pdf
 
 #%%
-def get_scipy_distributions(cwd:str, stdists_exc:list = ['studentized_range', 
-                                                         'levy_l_gen', 
-                                                         'levy_stable']
-                            ) -> list:
+def get_scipy_distributions(cwd:str, 
+    stdists_exc:list = ['studentized_range', 'levy_l_gen', 'levy_stable']) \
+    -> list:
     """Get list of continuous distributions from SciPy.org website
 
     Args:
@@ -320,8 +490,6 @@ def find_best_distribution(data: pd.Series, scipy_distributions:list):
         # Fit stdist to real data
         fitted_stdist = FitScipyDistribution(data, stdist_i)
 
-        # clear_output(wait=True)
-
         print(f'Progress: {(i+1)/len(scipy_distributions)*100:3.1f}% '
               f'({i:3d}/{len(scipy_distributions)-1:3d})'
               f' | Best dist. (R2={best_stdist.r2_score():.2f}) '
@@ -342,8 +510,6 @@ def find_best_distribution(data: pd.Series, scipy_distributions:list):
     ranking = pd.DataFrame(data=fitting_results, 
                            columns=['distribution', 'results'])
     
-    # Clear output to print final results
-    # clear_output(wait=True)
     
     return best_stdist, ranking
 
@@ -390,8 +556,11 @@ def plot_histogram(df_input:pd.DataFrame, features:list,
                                             positive_only=np.sum(all_data<0)==0)
 
         # Compute new X-axis limits for a better plot representation.
-        xlim = kwargs.get('xlim', (utils.round_by_om(max(std_lims[0], all_data.min()), abs_method='floor'), 
-                                utils.round_by_om(min(std_lims[1], all_data.max()), abs_method='ceil')))
+        xlim = kwargs.get('xlim', 
+                          (utils.round_by_om(max(std_lims[0], all_data.min()), 
+                                             abs_method='floor'), 
+                           utils.round_by_om(min(std_lims[1], all_data.max()), 
+                                             abs_method='ceil')))
         plt.xlim(xlim)
         plt_kwargs.update(dict(range=xlim))
 
@@ -410,9 +579,13 @@ def plot_histogram(df_input:pd.DataFrame, features:list,
 
 
     # Format values for the description table
-    values=[[utils.number2latex(element) for element in array] for array in description_table.to_numpy()]
-    columns = kwargs.get('describe_colnames', [r'\texttt{' + feature + '}' for feature in features])
-    text = utils.df2latex(pd.DataFrame(data=values, index=list(description_table.index), columns=columns))
+    values=[[utils.number2latex(element) for element in array] \
+            for array in description_table.to_numpy()]
+    columns = kwargs.get('describe_colnames', 
+                        [r'\texttt{' + feature + '}' for feature in features])
+    text = utils.df2latex(pd.DataFrame(data=values, 
+                                       index=list(description_table.index), 
+                                       columns=columns))
 
     # Print statistical summary before the histogram
     if kwargs.get('describe', True): 

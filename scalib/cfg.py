@@ -1,6 +1,6 @@
 # Declare dictionary containing the link between JSpOC format and official 
 # CCSDS
-df_to_ccsds_features = {
+kelvins_to_ccsds_features = {
     'relative_speed': 'RELATIVE_SPEED',
     'ccsds_cdm_vers': 'CCSDS_CDM_VERS',
     'creation_date': 'CREATION_DATE',

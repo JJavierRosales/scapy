@@ -414,21 +414,19 @@ class ConjunctionEventsDataset(EventsPlotting):
     # class with "staticmethod".
     # Proposed API for the pandas loader
     @staticmethod
-    def from_pandas(df:pd.DataFrame, 
-        df_to_ccsds_name_mapping:dict=cfg.df_to_ccsds_features,
-        dropna:bool=True, group_events_by:str='event_id', 
+    def from_pandas(df:pd.DataFrame, group_events_by:str,
+        df_to_ccsds_name_mapping:dict, dropna:bool = True, 
         date_format:str='%Y-%m-%d %H:%M:%S.%f') -> ConjunctionEventsDataset:
         """Import Conjunction Events Dataset from pandas DataFrame.
 
         Args:
             df (pd.DataFrame): Pandas DataFrame containing all events.
-            df_to_ccsds_name_mapping (dict, optional): Dictionary containing the 
-            mapping of pandas columns with CDM features names as instructed by 
-            the CCSDS. Defaults to cfg.df_to_ccsds_features.
+            group_events_by (str): Column from DataFrame used to group events.
+            df_to_ccsds_name_mapping (dict): Dictionary containing the mapping 
+            of pandas columns with CDM features names as instructed by the CCSDS 
+            standards.
             dropna (bool, optional): Flag to drop columns containing NaN values.
             Defaults to True.
-            group_events_by (str, optional): Column from DataFrame to use to 
-            group events. Defaults to 'event_id'.
             date_format (_type_, optional): Date format to convert datetime 
             columns. Defaults to '%Y-%m-%d %H:%M:%S.%f'.
 
@@ -510,8 +508,12 @@ class ConjunctionEventsDataset(EventsPlotting):
 
         return event_dataset
 
-    def to_dataframe(self) -> pd.DataFrame:
+    def to_dataframe(self, event_id:bool=False) -> pd.DataFrame:
         """Convert Conjunction Events dataset to pandas DataFrame
+
+        Args:
+            event_id (bool): Flag to include an additional column with the 
+            Conjunction Event ID. Defaults to False.
 
         Returns:
             pd.DataFrame: Pandas DataFrame with all CDMs from all events.
@@ -530,10 +532,12 @@ class ConjunctionEventsDataset(EventsPlotting):
         for e, event in enumerate(pb_events.iterations):
             
             # Append Conjunction Event object as a dataframe to the list.
-            event_dataframes.append(event.to_dataframe())
+            df_event = event.to_dataframe()
+            if event_id: df_event['__EVENT_ID'] = e
+            event_dataframes.append(df_event)
 
             # Update progress bar.
-            pb_events.refresh(i = e+1)
+            pb_events.refresh(i = e+1, nested_progress=True)
         
         # Update progress bar with the last message.
         pb_events.refresh(i = e+1, 
@@ -672,7 +676,7 @@ class ConjunctionEventsDataset(EventsPlotting):
         ax.set_xticks(labels)
 
         # Set title, and X and Y axis labels.
-        ax.set_title(r'Conjunction Data Messages histogram.')
+        ax.set_title(r'CDM histogram')
         ax.set_xlabel(r'Number of CDMs')
         ax.set_ylabel(r'Number of Conjunction Events')
 
