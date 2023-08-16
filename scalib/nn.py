@@ -2,28 +2,26 @@
 from __future__ import annotations
 from typing import Type, Union
 
-import os
-import numpy as np
-import pandas as pd
-import random
-
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
-import matplotlib.pyplot as plt
-import sys
+from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
+
+import numpy as np
+import pandas as pd
+from matplotlib import pyplot as plt, rc
 
 from . import utils
-<<<<<<< HEAD
-from .cdm import ConjunctionDataMessage
-from .event import Event, EventDataset
-=======
 from .cdm import ConjunctionDataMessage as CDM
-from .event import ConjunctionEvent, ConjunctionEventsDataset
->>>>>>> dev
+from .event import ConjunctionEvent as CE
+from .event import ConjunctionEventsDataset as CED
 
-
+#%% F: FUNCTION TO GET THE LEARNING RATE
+def get_lr(optimizer):
+    for param_group in optimizer.param_groups:
+        return param_group['lr']
+#%% DATASET OF CONJUNCTION EVENTS DATASET CLASS
 class DatasetEventDataset(Dataset):
     def __init__(self, event_set:list, features:list, 
                  features_stats:dict = None) -> None:
@@ -108,11 +106,156 @@ class DatasetEventDataset(Dataset):
                                      (feature_stddev+epsilon)])
 
         return x, torch.tensor(len(event))
+#%% LAYER CONSTRUCTOR CLASS
+class LayerConstructor(nn.Module):
+    def __init__(self, layer_type:str, input_size:int, output_size:int,
+        dropout:float = None, activation_function = None, **kwargs) -> None:
+        super().__init__()
+
+        # Check layer_type is either linear or lstm.
+        if not layer_type in ['lstm', 'linear', 'activation_function', 'dropout']:
+            raise ValueError('Layer {} not recognised'.format(layer_type))
+
+        self.layer_type = layer_type
+        
+        self.input_size = input_size
+        self.output_size = output_size
+
+        if not dropout is None:
+            self.dropout = nn.Dropout(p = dropout, inplace = False)
+        else:
+            self.dropout = None
+
+        self.activation_function = activation_function
+
+        # Set internal values for the model.
+        for key, value in kwargs.items(): setattr(self, '_' + key, value)
+
+        if layer_type=='linear':
+            self._init_linear()
+        elif layer_type =='lstm':
+            self._init_lstm()
 
 
+    def _init_linear(self) -> None:
+        """Initialize Linear layer.
+        """
+        # Set default parameters for the Linear class.
+        default_parameters = {'bias': True,
+                              'device': None,
+                              'dtype': None}
+        # Check if any default parameter has been passed to the class and add it
+        # to self.                   
+        for parameter, value in default_parameters.items():
+            if not hasattr(self, '_'+parameter): 
+                setattr(self, '_'+parameter, value)
+
+        # Initialize Linear layer object.
+        self.layer = nn.Linear(in_features   = self.input_size, 
+                               out_features  = self.output_size,
+                               bias          = self._bias, 
+                               device        = self._device, 
+                               dtype         = self._dtype)
+
+    def _init_lstm(self) -> None:
+        """Initialize LSTM layer.
+        """
+
+        # Define default parameters for the LSTM class.
+        default_parameters = {'num_layers':     2,
+                              'batch_first':    True,
+                              'dropout':        0,
+                              'bias':           True,
+                              'bidirectional':  False,
+                              'proj_size':      0,
+                              'device':         None}
+
+        # Check if any default parameter has been passed to the class and add it
+        # to self.
+        for parameter, value in default_parameters.items():
+            if not hasattr(self, '_'+parameter): 
+                setattr(self, '_'+parameter, value)
+
+        # Initialize the LSTM class under layer attribute.
+        self.layer = nn.LSTM(input_size = self.input_size, 
+                        hidden_size     = self.output_size, 
+                        num_layers      = self._num_layers, 
+                        batch_first     = self._batch_first, 
+                        dropout         = self._dropout,
+                        bias            = self._bias,
+                        bidirectional   = self._bidirectional,
+                        proj_size       = self._proj_size)
+
+
+    def __repr__(self) -> str:
+        """Print readable information about the layer.
+
+        Returns:
+            str: Class name with number of CDMs objects contained on it.
+        """
+        return 'Layer: {}'.format(self.layer) + \
+               (' -> Dropout: {}'.format(self.dropout) \
+                    if self.dropout > 0 else '') + \
+               ' -> Activation Function: {}'.format(self.activation_function)
+
+#%% LAYER TO MODULES CLASS
+def LayersToModules(layers:list, input_size:int, **kwargs):
+
+    # Get input_size and output_size for every layer.
+    for l, layer in enumerate(layers):
+        layer['input_size'] = input_size if l==0 else layers[l-1]['neurons']
+        layer['output_size'] = layers[l]['neurons'] 
+
+    # Create module counter.
+    modules = {}
+    counter = {}
+    
+    # Iterate over all layers to retrieve all its parameters and instanciate
+    # the module class.
+    for l, parameters in enumerate(layers):
+        kwargs = {}
+        for parameter, value in parameters.items():
+            if parameter not in ['layer_type', 'input_size', 'output_size']:
+                kwargs[parameter] = value
+
+        layer_type = parameters['layer_type']
+
+        layer = LayerConstructor(layer_type = layer_type,
+                                    input_size = parameters['input_size'], 
+                                    output_size = parameters['output_size'],
+                                    **kwargs)
+
+        # Iterate over all different modules that can be present in a single
+        # layer of the neural network.
+        for module in [layer_type, 'dropout', 'activation_function']:
+
+            # Get attribute name
+            attr_name = 'layer' if module==layer_type else module
+
+            # Initialize counter for modules.
+            if not module in list(counter.keys()): 
+                counter[module] = 0
+            else:
+                if not getattr(layer, attr_name) is None:
+                    counter[module] +=1
+
+            # Add information to the modules dict 
+            if not getattr(layer, attr_name) is None:
+
+                # Get module name and value.
+                module_name = 'l{}_m{}_{}'.format(l,counter[module], module)
+                module_value = getattr(layer, attr_name)
+
+                # Add it to the modules dictionary.
+                modules[module_name] = module_value
+                
+    return nn.ModuleDict(modules)
+    
+#%% CONJUNCTION EVENT FORECASTER CLASS
+# Define Feature Forecaster module
 class ConjunctionEventForecaster(nn.Module):
-    def __init__(self, lstm_size:int = 256, lstm_depth:int = 2, 
-                 dropout:float = 0.2, features:Union[list, str] = None):
+    def __init__(self, layers:list, output_size:int, 
+        features:Union[list, str] = None):
         super().__init__()
         if features is None:
             features = ['__CREATION_DATE',
@@ -183,23 +326,8 @@ class ConjunctionEventForecaster(nn.Module):
         self.input_size = len(features)
 
 
-        self.lstm_size = lstm_size
-        self.lstm_depth = lstm_depth
-        self.dropout = dropout
-
-        self.lstm = nn.LSTM(input_size=self.input_size, 
-                            hidden_size=self.lstm_size, 
-                            num_layers=lstm_depth, 
-                            batch_first=True, 
-                            dropout=dropout if dropout else 0)
-        
-        self.fc1 = nn.Linear(in_features = lstm_size, 
-                             out_features = self.input_size)
-        
-        if dropout is not None:
-            self.dropout1 = nn.Dropout(p=dropout)
-
-
+        # Set model using the modules parameter
+        self.model = layers
 
         self._features = features
         self._features_stats = None
@@ -208,7 +336,7 @@ class ConjunctionEventForecaster(nn.Module):
         self._hist_valid_loss = []
         self._hist_valid_loss_iters = []
 
-    def plot_loss(self, filepath:str = None, figsize:tuple = (6,3)) -> None:
+    def plot_loss(self, filepath:str = None, figsize:tuple = (6,3), log_scale:bool = False) -> None:
         """Plot RNN loss in the training set (orange) and validation set (blue) 
         vs number of iterations during model training.
 
@@ -216,23 +344,33 @@ class ConjunctionEventForecaster(nn.Module):
             filepath (str, optional): Path where the plot is saved. Defaults to 
             None.
             figsize (tuple, optional): Size of the plot. Defaults to (6 ,3).
+            log_scale (bool, optional): Flag to plot Loss using logarithmic 
+            scale. Defaults to False.
         """
+        train_loss = np.log(self._hist_train_loss) if log_scale \
+                     else self._hist_train_loss
+        valid_loss = np.log(self._hist_valid_loss) if log_scale \
+                     else self._hist_valid_loss
         fig, ax = plt.subplots(figsize = figsize)
-        ax.plot(self._hist_train_loss_iters, self._hist_train_loss, 
+        ax.plot(self._hist_train_loss_iters, train_loss, 
                 label='Training', color='tab:orange')
-        ax.plot(self._hist_valid_loss_iters, self._hist_valid_loss, 
+        ax.plot(self._hist_valid_loss_iters, valid_loss, 
                 label='Validation', color='tab:blue')
-        ax.set_xlabel('Iterations')
-        ax.set_ylabel('Loss')
-        ax.legend()
+        ax.set_xlim(0, max(self._hist_valid_loss_iters))
+        ax.set_xlabel('Number of iterations')
+        ax.set_ylabel('MSE Loss')
+        ax.legend(fontsize=8)
+        ax.grid(True, linestyle='--')
         if filepath is not None:
             print('Plotting to file: {}'.format(filepath))
             plt.savefig(filepath)
 
     def learn(self, event_set:list, epochs:int = 2, lr:float = 1e-3, 
-              batch_size:int = 8, device:str = 'cpu', 
-              valid_proportion:float = 0.15, num_workers:int = 4, 
-              event_samples_for_stats:int = 250, filename_prefix:str = None) -> None:
+              batch_size:int = 8, device:str = None, 
+              valid_proportion:float = 0.15, num_workers:int = 4,
+              lr_scheduler:bool = False, 
+              event_samples_for_stats:int = 250, filename_prefix:str = None, 
+              **kwargs) -> None:
         """Train RNN model.
 
         Args:
@@ -260,7 +398,8 @@ class ConjunctionEventForecaster(nn.Module):
 
         
         # Define the device on which the torch will be allocated:
-        if device is None: device = torch.device('cpu')
+        device = torch.device('cpu') if device is None else torch.device(device)
+
         self._device = device
         self.to(device)
 
@@ -273,6 +412,14 @@ class ConjunctionEventForecaster(nn.Module):
         # of events available.
         if event_samples_for_stats > len(event_set):
             event_samples_for_stats = len(event_set)
+
+        # If mean and standard deviations per feature are not provided, get 
+        # them using the DatasetEventDataset class to normalize features in the
+        # training and validation datasets.
+        if self._features_stats is None:
+            self._features_stats = \
+                DatasetEventDataset(event_set[:event_samples_for_stats], 
+                                    self._features)._features_stats
         
         # Consider only events that contain at least 2 CDM objects.
         event_set = event_set.filter(lambda event: len(event) > 1)
@@ -296,15 +443,6 @@ class ConjunctionEventForecaster(nn.Module):
         # Get training set size.
         train_set_size = len(event_set) - valid_set_size
 
-        # If mean and standard deviations per feature are not provided, get 
-        # them using the DatasetEventDataset class to normalize features in the
-        # training and validation datasets.
-        if self._features_stats is None:
-            print('Computing normalization statistics')
-            self._features_stats = \
-                DatasetEventDataset(event_set[:event_samples_for_stats], 
-                                    self._features)._features_stats
-        
         # Get training and validation datasets with normalized features using
         # the stats metrics. 
         train_set = DatasetEventDataset(event_set[:train_set_size], 
@@ -326,6 +464,7 @@ class ConjunctionEventForecaster(nn.Module):
         # Set-up optimizer and criterion.
         optimizer = optim.Adam(self.parameters(), lr = lr)
         criterion = nn.MSELoss()
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.1, patience=batch_size) if lr_scheduler else None
 
         # Set training mode ON to inform layers such as Dropout and BatchNorm, 
         # which are designed to behave differently during training and 
@@ -338,17 +477,11 @@ class ConjunctionEventForecaster(nn.Module):
             total_iters = 0
         else:
             total_iters = self._hist_train_loss_iters[-1]
-<<<<<<< HEAD
-            
-        for epoch in range(epochs):
-=======
 
         pb_epochs = utils.ProgressBar(iterations=range(epochs), 
-            description = 'Training Feature Forecaster model...', 
-            desc_loc='right')
-            
+            description = 'Training Feature Forecaster model...')
+
         for epoch in pb_epochs.iterations:
->>>>>>> dev
             with torch.no_grad():
                 for _, (events, event_lengths) in enumerate(valid_loader):
 
@@ -377,14 +510,12 @@ class ConjunctionEventForecaster(nn.Module):
                     # model also requires a second parameter with the number of 
                     # CDMs per event object in order to pack padded sequences to 
                     # optimize computation.
-                    output = self(inputs, event_lengths)
+                    output = self.forward(inputs, event_lengths)
 
                     # Compute loss using the criterion and add it to the array.
                     loss = criterion(output, target)
                     valid_loss = float(loss)
                     self._hist_valid_loss.append(valid_loss)
-
-
                     self._hist_valid_loss_iters.append(total_iters)
                     
             # Iterate over all batches containes in the training loader. Every 
@@ -419,7 +550,7 @@ class ConjunctionEventForecaster(nn.Module):
 
                 # Clear all the gradients of all the parameters of the model.
                 optimizer.zero_grad()
-                output = self(inputs, event_lengths)
+                output = self.forward(inputs, event_lengths)
 
                 # Compute MSE loss using criterion and store it in an array.
                 loss = criterion(output, target)
@@ -435,36 +566,17 @@ class ConjunctionEventForecaster(nn.Module):
                 # Convert loss from the training dataset to numpy and store it.
                 
                 self._hist_train_loss_iters.append(total_iters)
-<<<<<<< HEAD
-                
-
-                print(f'Iteration {total_iters} | '
-                      f'Minibatch {i_minibatch+1}/{len(train_loader)} | '
-                      f'Epoch {epoch+1}/{epochs} | '
-                      f'Training loss {train_loss:.4e} | '
-                      f'Validation loss {valid_loss:.4e}', end='\r')
-
-                sys.stdout.flush()
-
-            if filename_prefix is not None:
-                filename = filename_prefix + '_epoch_{}'.format(epoch+1)
-                print('Saving model checkpoint to file {}'.format(filename))
-                self.save(filename)
-
-    def predict(self, event: Event) -> ConjunctionDataMessage:
-        """Predict next CDM object from a given Event object.
-
-        Args:
-            event (Event): Conjunction Event object containing CDM(s) object(s).
-=======
 
                 description = f'Iterations {total_iters} | ' + \
+                    f'LR = {self._get_lr(optimizer):.2e} | ' + \
                     f'Minibatch {i_minibatch+1}/{len(train_loader)} | ' + \
-                    f'Training loss {train_loss:.4e} | ' + \
-                    f'Validation loss {valid_loss:.4e}'
+                    f'Train loss {train_loss:.4e} | ' + \
+                    f'Valid loss {valid_loss:.4e}'
                 
                 pb_epochs.refresh(i = epoch+1, description = description, 
                     nested_progress = True)
+
+                if not scheduler is None: scheduler.step(loss)
 
 
             if filename_prefix is not None:
@@ -474,13 +586,17 @@ class ConjunctionEventForecaster(nn.Module):
                     nested_progress = True)
                 self.save(filename)
 
+    @staticmethod      
+    def _get_lr(optimizer) -> float:
+        for param_group in optimizer.param_groups:
+            return param_group['lr']
+
     def predict(self, event: ConjunctionEvent) -> ConjunctionDataMessage:
         """Predict next CDM object from a given ConjunctionEvent object.
 
         Args:
             event (ConjunctionEvent): Conjunction Event object containing CDM(s) 
             object(s).
->>>>>>> dev
 
         Raises:
             RuntimeError: _description_
@@ -489,11 +605,7 @@ class ConjunctionEventForecaster(nn.Module):
             ConjunctionDataMessage: CDM object.
         """
 
-<<<<<<< HEAD
-        ds = DatasetEventDataset(EventDataset(events=[event]), 
-=======
-        ds = DatasetEventDataset(ConjunctionEventsDataset(events=[event]), 
->>>>>>> dev
+        ds = DatasetEventDataset(CED(events=[event]), 
                                  features = self._features, 
                                  features_stats = self._features_stats)
         
@@ -520,17 +632,13 @@ class ConjunctionEventForecaster(nn.Module):
 
         output_last = output if output.ndim == 1 else output[-1]
  
-<<<<<<< HEAD
-        # Get creation date from first CDM object contained in the Event.
-=======
         # Get creation date from first CDM object contained in the Conjunction 
         # Event.
->>>>>>> dev
         date0 = event[0]['CREATION_DATE']
 
         # Initialize new CDM object to store de-normalized values resulting from 
         # the RNN model.
-        cdm = ConjunctionDataMessage()
+        cdm = CDM()
 
         # Iterate over all the featues
         for i in range(len(self._features)):
@@ -558,22 +666,6 @@ class ConjunctionEventForecaster(nn.Module):
 
         return cdm
 
-<<<<<<< HEAD
-    def predict_event_step(self, event:Event, num_samples:int = 1) \
-        -> Union[Event, EventDataset]:
-        """Predict next CDM n-times for a given event object.
-
-        Args:
-            event (Event): Event object from which the CDM is forecasted.
-            num_samples (int, optional): Number of predictions. Defaults to 1.
-
-        Returns:
-            Union[Event, EventDataset]: Two possible outputs are returned
-            depending on the parameter num_samples:
-             - If num_samples = 1: Returns one Event object with all CDMs 
-                forecasted. 
-             - If num_samples > 1: Returns EventDataset object containing all 
-=======
     def predict_event_step(self, event:ConjunctionEvent, num_samples:int = 1) \
         -> Union[ConjunctionEvent, ConjunctionEventsDataset]:
         """Predict next CDM n-times for a given event object.
@@ -584,13 +676,13 @@ class ConjunctionEventForecaster(nn.Module):
             num_samples (int, optional): Number of predictions. Defaults to 1.
 
         Returns:
-            Union[ConjunctionEvent, ConjunctionEventsDataset]: Two possible outputs are returned
-            depending on the parameter num_samples:
-             - If num_samples = 1: Returns one ConjunctionEvent object with all CDMs 
-                forecasted. 
-             - If num_samples > 1: Returns ConjunctionEventsDataset object containing all 
->>>>>>> dev
-                possible evolutions of the event (combinations of CDMs).
+            Union[ConjunctionEvent, ConjunctionEventsDataset]: Two possible 
+            outputs are returned depending on the parameter num_samples:
+             - If num_samples = 1: Returns one ConjunctionEvent object with all 
+                CDMs forecasted. 
+             - If num_samples > 1: Returns ConjunctionEventsDataset object 
+                containing all possible evolutions of the event (combinations of
+                CDMs).
         """
 
         # Initialize empty list of events
@@ -603,20 +695,6 @@ class ConjunctionEventForecaster(nn.Module):
             # Predict next CDM of the event.
             cdm = self.predict(i_event)
 
-<<<<<<< HEAD
-            # Add CDM object to the Event object.
-            i_event.add(cdm)
-
-            # Append event to the Event step list.
-            events.append(i_event)
-
-        # Return Event object or EventDataset objects.
-        return es[0] if num_samples == 1 else EventDataset(events=events)
-            
-
-    def predict_event(self, event:Event, num_samples:int = 1, 
-                      max_length:int = 22) -> Union[Event, EventDataset]:
-=======
             # Add CDM object to the ConjunctionEvent object.
             i_event.add(cdm)
 
@@ -625,61 +703,42 @@ class ConjunctionEventForecaster(nn.Module):
 
         # Return Event object or ConjunctionEventsDataset objects.
         return es[0] if num_samples == 1 \
-            else ConjunctionEventsDataset(events=events)
+            else CED(events=events)
             
 
     def predict_event(self, event:ConjunctionEvent, num_samples:int = 1, 
-                      max_length:int = 22) -> Union[ConjunctionEvent, ConjunctionEventsDataset]:
->>>>>>> dev
+        max_length:int = 22) -> Union[ConjunctionEvent, ConjunctionEventsDataset]:
         """Forecast the evolution of a given Conjunction Event by predicting 
         upcoming CDMs until TCA.
 
         Args:
-<<<<<<< HEAD
-            event (Event): Event object to forecast.
-=======
             event (ConjunctionEvent): Conjunction Event to forecast.
->>>>>>> dev
             num_samples (int, optional): Number of possible CDMs considered in 
             every forecasting step. Defaults to 1.
             max_length (int, optional): Maximum number of CDM objects contained 
             in the event object. Defaults to 22.
 
         Returns:
-<<<<<<< HEAD
-            Union[Event, EventDataset]: Two possible outputs are returned
-            depending on the parameter num_samples:
-             - If num_samples = 1: Returns one Event object with all CDMs 
-                forecasted. 
-             - If num_samples > 1: Returns EventDataset object containing all 
-=======
-            Union[ConjunctionEvent, ConjunctionEventsDataset]: Two possible outputs are returned
-            depending on the parameter num_samples:
-             - If num_samples = 1: Returns one ConjunctionEvent object with all CDMs 
-                forecasted. 
-             - If num_samples > 1: Returns ConjunctionEventsDataset object containing all 
->>>>>>> dev
-                possible evolutions of the event (combinations of CDMs).
+            Union[ConjunctionEvent, ConjunctionEventsDataset]: Two possible 
+            outputs are returned depending on the parameter num_samples:
+             - If num_samples = 1: Returns one ConjunctionEvent object with all 
+                CDMs forecasted. 
+             - If num_samples > 1: Returns ConjunctionEventsDataset object 
+                containing all possible evolutions of the event (combinations of 
+                CDMs).
         """
 
         # Initialize list to store Conjunction Events.
         events = []
 
         # Iterate over all sequences
-<<<<<<< HEAD
-        pb_samples = utils.progressbar(iterations = range(num_samples), 
-                            desc_loc='right', 
-                            description='> Predicting event evolution ...')
-=======
-        pb_samples = utils.progressbar(iterations = range(num_samples),  
-            description='> Forecasting Conjunction Event evolution ...',
-            desc_loc='right')
->>>>>>> dev
+        pb_samples = utils.ProgressBar(iterations = range(num_samples),  
+            description='Forecasting Conjunction Event evolution ...')
 
         for i in pb_samples.iterations:
 
             # Update progress bar.
-            pb_features.refresh(i = i+1)
+            pb_samples.refresh(i = i+1)
 
             # Create a deep copy of the input event to avoid modifying the 
             # original object
@@ -689,12 +748,8 @@ class ConjunctionEventForecaster(nn.Module):
             # conditions are reached:
             #  - CDM creation date is later than TCA.
             #  - TCA is later than 7 days.
-<<<<<<< HEAD
-            #  - Event contains same number of CDMs equal to max_length.
-=======
             #  - The conjunction event contains same number of CDMs equal to 
             #       max_length.
->>>>>>> dev
             while True:
 
                 # Predict new CDM from i_event and append object to i_event.
@@ -710,17 +765,11 @@ class ConjunctionEventForecaster(nn.Module):
             events.append(i_event)
 
         # Update progress bar.
-<<<<<<< HEAD
-        pb_features.refresh(i = i+1, description = '> Event evolution predicted.')
-
-        return events[0] if num_samples==1 else EventDataset(events = events)
-=======
-        pb_features.refresh(i = i+1, 
+        pb_samples.refresh(i = i+1, 
             description = '> Conjunction Event evolution forecasted.')
 
         return events[0] if num_samples==1 \
-            else ConjunctionEventsDataset(events = events)
->>>>>>> dev
+            else CED(events = events)
 
     def save(self, filepath:str) -> None:
         """Save model to an external file.
@@ -737,21 +786,24 @@ class ConjunctionEventForecaster(nn.Module):
         return torch.load(filepath)
 
     def reset(self, batch_size:int):
-        """Initialize LSTM hidden state (h) and cell state (c).
-
-        Args:
-            batch_size (int): Batch size.
+        """Initialize hidden state (h) and cell state (c) for all the LSTM 
+        layers in the Sequencial object.
         """
-        h = torch.zeros(self.lstm_depth, batch_size, self.lstm_size)
-        c = torch.zeros(self.lstm_depth, batch_size, self.lstm_size)
+        # Initialize dictionary for hidden states tuple
+        self.hidden = {}
 
-        h = h.to(self._device)
-        c = c.to(self._device)
+        for module_name, module in self.model.items():
+            if not 'lstm' in module_name: continue
+            
+            h = torch.zeros(module.num_layers, batch_size, module.hidden_size)
+            c = torch.zeros(module.num_layers, batch_size, module.hidden_size)
 
-        self.hidden = (h, c)
+            h = h.to(self._device)
+            c = c.to(self._device)
 
-    def forward(self, x:torch.FloatTensor, x_lengths: torch.IntTensor) \
-        -> torch.FloatTensor:
+            self.hidden[module_name] = (h, c)
+
+    def forward(self, x:torch.FloatTensor, x_lengths:torch.IntTensor) -> torch.FloatTensor:
         """Predict new CDM containing normalized values.
 
         Args:
@@ -766,333 +818,126 @@ class ConjunctionEventForecaster(nn.Module):
             torch.FloatTensor: Tensor containing normalized values of the new CDM.
         """
 
-        # Get the size from the inputs. In this case, batch_size is the number 
-        # of events contained in a minibatch coming from the DataLoader class.
-        batch_size, x_length_max, n_features = x.size()
-
-        # In the __getitem__() method of DatasetEventDataset class, all events
-        # are padded with zeros in order to get the same number of tensors, and 
-        # therefore same event_length. This makes batch processing easier.
-        #
-        # To optimize training and avoid computing empty CDMs, PyTorch allows 
-        # to packing a padded sequence by producing a PackedSequence object. 
-        # A PackedSequence object is a tuple of two lists. One contains the 
-        # elements of sequences interleaved by time steps and other contains the 
-        # the batch size at each step. 
-        # Pack Tensor containing padded sequences of variable length.
-        x = nn.utils.rnn.pack_padded_sequence(input = x, 
-                                              lengths = x_lengths, 
-                                              batch_first=True, 
-                                              enforce_sorted=False)
-
-        # Get outputs from the LSTM layer.
-        x, self.hidden = self.lstm(x, self.hidden)
-
-        # Pads a packed batch of variable length sequences from LSTM layer.
-        x, _ = nn.utils.rnn.pad_packed_sequence(sequence = x, 
-                                                batch_first=True, 
-                                                total_length = x_length_max)
+        # Iterate over all modules to perform the forward operation.
+        for module_name, module in self.model.items():
         
-        # Implement a dropout layer to avoid overfitting.
-        if self.dropout: x = self.dropout1(x)
+            if 'lstm' in module_name:
 
-        # Set Rectified Linear Unit activation function
-        x = torch.relu(x)
+                # Get size of inputs tensor.
+                batch_size, x_length_max, n_features = x.size()
 
-        # Apply linear regression to fully connected layer.
-        x = self.fc1(x)
+                # All events are padded with zeros in order to get the same number of 
+                # tensors, and therefore same event_length. This makes batch processing 
+                # easier.
+                #
+                # To optimize training and avoid computing empty CDMs, PyTorch allows 
+                # to packing a padded sequence by producing a PackedSequence object. 
+                # A PackedSequence object is a tuple of two lists. One contains the 
+                # elements of sequences interleaved by time steps and other contains the 
+                # the batch size at each step. 
+                # Pack Tensor containing padded sequences of variable length.
+                x = pack_padded_sequence(input = x, 
+                                         lengths = x_lengths, 
+                                         batch_first = module.batch_first, 
+                                         enforce_sorted = False)
 
+                x, self.hidden[module_name] = module(x, self.hidden[module_name])
+
+                # Pads a packed batch of variable length sequences from LSTM layer.
+                x, _ = pad_packed_sequence(sequence = x, 
+                                           batch_first = module.batch_first, 
+                                           total_length = x_length_max)
+            else:
+                x = module(x)
+            
         return x
 
 
-#%%
-def get_lr(optimizer):
-    for param_group in optimizer.param_groups:
-        return param_group['lr']
-#%%
-def event_ts_sets(full_seq:np.ndarray, window_size:int, 
-                  events_to_forecast:int=1) -> list:  
-    """Get all possible Time-Series subsets (sequence->target) from a complete 
-    Time-Series set associated to an event.
+#%% COLLISION RISK PROBABILITY ESTIMATOR CLASS
+# Define Collision Risk Probability Estimator
+class CollisionRisk(nn.Module):
 
-    Args:
-        full_sequence (np.ndarray): Array containing the full sequence 
-        of data for a given event.
-        window_size (int): Window size of events.
-        events_to_forecast (int): Number of events to forecast. Defaults to 1.
-
-    Returns:
-        list: List of tuples with sequences and labels.
-    """
-
-    # Get number of TS sets to extract from the full sequence. 
-    n = len(full_seq) - (window_size + events_to_forecast)+1
-
-    # Initialize Time-Series sets list containing tuples with sequence-target
-    # for a given event.
-    ts_sets = []
-
-    # Create the list of Time-Series sets using a loop.
-    for i in range(n):
-
-        # Get sequence and target value for element i
-        seq_i       = full_seq[i:i+window_size]
-        target_i    = full_seq[i+window_size:i+window_size+events_to_forecast]
-
-        # Add tuple to the output list
-        ts_sets.append((seq_i, target_i))
-
-    return ts_sets
-
-#%%
-def get_tsf_tensors(df:pd.DataFrame, features:list, 
-                    seq_length:int, events_to_forecast:int, 
-                    rootpath:str, shuffle:bool = True,
-                    overwrite_features:bool = False,
-                    save_new_features:bool = True) -> dict:
-    """Extract list of tuples in the format (sequence, target) from a DataFrame.
-
-    Args:
-        df (pd.DataFrame): Data where the mini batch of time series and targets
-        are exracted from.
-        features (list): List of features to extract the data.
-        seq_length (int): Length of the Time-Series sequence (batch).
-        events_to_forecast (int): Number of time steps to forecast.
-        rootpath (str): Root path where tensors shall be downloaded or saved to.
-        shuffle (bool, optional): Flag to shuffle list of tensors. Defaults to 
-        True.
-        overwrite_features (bool, optional): Flag to determine wether features
-        shall be saved regardless of tensor file availability. Defaults to 
-        False.
-        save_new_features (bool, optional): Flag to determine wether the tensors
-        from new features shall be saved or not. Defaults to True.
-
-    Returns:
-        dict: Dictionary containing the list of tuples per feature.
-    """
-
-    # Count number of CDMs per event
-    ts_events  = df[['event_id', features[0]]].groupby(['event_id']).count() \
-                    .rename(columns={features[0]:'nb_cdms'})
-
-    # Define window size and number of events to forecast
-    min_cdms = seq_length + events_to_forecast
-
-    # Get events that have a minimum number of CDMs equal to the window_size + 
-    # events_to_forecast
-    events_filter = list(ts_events[ts_events['nb_cdms']>=min_cdms].index.values)
-
-    # Initialize output variable
-    tsf_tensors = {}
-
-    # Iterate over all features to get the time series subsets
-<<<<<<< HEAD
-    pb_features = utils.progressbar(iterations = range(len(features)), 
-=======
-    pb_features = utils.ProgressBar(iterations = range(len(features)), 
->>>>>>> dev
-                                    desc_loc='right')
-    for f in pb_features.iterations:
-
-        # Initialize list of tensors for feature f
-        feature = features[f]
+    def __init__(self, emb_szs, n_cont, out_sz, layers, p=0.5):
         
-        # Get filename and filepath and check if it already exists
-        filename = f'ts_{seq_length}-{events_to_forecast}-{feature}.pt'
-        filepath = os.path.join(rootpath, filename)
-
-        if os.path.exists(filepath) and not overwrite_features:
-            # If tensors already exists, load them.
-            description = f'> Loading tensors from feature {feature} ...'
-            pb_features.refresh(i = f+1, description = description)
-            
-            tsf_tensors[feature] = torch.load(filepath)
-        else:
-
-            # If tensor do not exist for a feature, initialize and get all 
-            # time-series
-            tsf_tensors[feature] = []
-
-            # Get full sequence from dataset and convert it to a tensor.
-            feature_dtype = str(df[feature].dtype).lower()
-            data = df[feature].to_numpy(dtype=feature_dtype)
-
-            for e, event_id in enumerate(events_filter):
-
-                # Print progress bar
-                subprogress = (e+1)/len(events_filter)*100
-                description = f'> Extracting sequences of time-series from' + \
-                            f' feature {feature:<30s} ' + \
-                            f'(Progress: {subprogress:5.1f}%)'
-                pb_features.refresh(i = f+1, description = description, 
-                                    last_iteration = False)
-
-                # Get full sequence from dataset and convert it to a tensor.
-                event_filter = (df['event_id']==event_id)
-                full_seq = torch.nan_to_num(torch.FloatTensor(data[event_filter]))
-
-                # Add Time-Series subsets from full sequence tensor and add it 
-                # to the list for the feature f
-                tsf_tensors[feature] += event_ts_sets(full_seq, seq_length)
-            if shuffle:
-                # Set random seed for reproducibility.
-                random.seed(0)
-                # Shuffle list to avoid biased learning from model.
-                random.shuffle(tsf_tensors[feature])
-
-            # Save tensors containing all Time-Series subsets for training 
-            # organised by feature.
-            if not save_new_features: continue
-
-            description = f'Saving tensors with sequences of time-series' + \
-                          f' into external file {"."*(len(description)-64)}'
-            torch.save(tsf_tensors[feature], os.path.join(rootpath, filename))
-            pb_features.refresh(i = f+1, description = description, 
-<<<<<<< HEAD
-                                last_iteration = False)
-=======
-                                nested_progress = True)
->>>>>>> dev
-
-    # Print final message
-    pb_features.refresh(i = f+1, 
-                        description = 'Time series extracted successfully.')
-
-    return tsf_tensors
-# %%
-
-#%%
-def tsf_iotensors(tsf_tensors:dict, features:list, seq_length:int, 
-                  filepath:str = None, batch_first=True) -> dict:
-    """Convert input dictionary with the shape:
-     {'feature_1': [([time_series_1], [forecast_1]), ... ([time_series_n], 
-     [forecast_n])],
-      'feature_2': [([time_series_1], [forecast_1]), ... ([time_series_n], 
-      [forecast_n])], 
-      ...,
-      'feature_m': [([time_series_1], [forecast1]), ... ([time_series_n], 
-      [forecast_n])]}
-    to a dictionary with shape {'inputs': tensos with shape (seq_length, 
-    batch_size, input_size), 'outputs': tensos with shape (batch_size, 
-    input_size)}.
-
-    Args:
-        tsf_tensors (dict): Dictionary containing tensors. Every key contains a 
-        list of tensors in the tuple format (input, forecast).
-        features (list): List of features to extract the inputs/outputs from.
-        filepath (str, optional): Directory path where the tensors are stored. 
-        Defaults to None.
-        batch_first (bool, optional): Shape of inputs tensor. Defaults to True.
-
-    Returns:
-        dict: Dictionary containing a torch with inputs in the format 
-        (batch_size, seq_length, input_size) and a torh with outputs in the 
-        format (batch_size, input_size) to train the model.
-    """
-
-    # Get features available in tsf_tensors dictionary
-    features_available = list(tsf_tensors.keys())
-
-    # Check all features requested by user are actually available in the 
-    # tsf_tensors dictionary.
-    for feature in features:
-        if not feature in features_available: 
-            print(f'Tensors from {feature} not available.')
-            return None
-
-    # Get length of sequence and number of sequences to process from tensor file
-    seq_length = tsf_tensors[features[0]][0][0].size(0)
-    batch_size = len(tsf_tensors[features[0]])
-    input_size = len(features)
-
-    # Initialize inputs and outputs arrays to contain sequences to process
-    # (batch_size, input_size)
-    outputs = torch.empty((batch_size, input_size), dtype=torch.float32) 
-    if batch_first:
-        # (batch_size, seq_length, input_size)
-        inputs =  torch.empty((batch_size, seq_length, input_size), 
-                              dtype=torch.float32)    
-    else:
-        # (seq_length, batch_size, input_size)
-        inputs =  torch.empty((seq_length, batch_size, input_size), 
-                              dtype=torch.float32)    
-
-    # Iterate over all sequences
-<<<<<<< HEAD
-    pb_sequences = utils.progressbar(iterations = range(batch_size), 
-=======
-    pb_sequences = utils.ProgressBar(iterations = range(batch_size), 
->>>>>>> dev
-                        desc_loc='right', 
-                        description='> Getting training and target tensors ...')
-    for b in pb_sequences.iterations:
-
-        # Initialize list for sequence s
-        inputs_s    = torch.empty((input_size, seq_length), dtype=torch.float32)
-        outputs_s   = torch.empty((input_size, 1), dtype=torch.float32)
-
-        # Get sequence s from all features
-        for f, feature in enumerate(features):
-            
-            # Get sequence s (input and output) from feature f
-            # - inputs_s  = [[f1_t1, f1_t2, ..., f1_tm], 
-            #                [f2_t1, f2_t2, ..., f2_tm], 
-            #                ...,
-            #                [fn_t1, fn_t2, ..., fn_tm]]
-            #
-            # - outputs_s = [[f1_tm+1], 
-            #                [f2_tm+1], 
-            #                ...,
-            #                [fn_tm+1]]
-            #
-            # Where n = input_size, and m = seq_length.
-            inputs_s[f], outputs_s[f] = tsf_tensors[feature][b]
-
-
-        # Reshape torch to be in the shape (seq_length, input_size) and 
-        # (1, input_size)
-        inputs_s = torch.transpose(inputs_s,0,1).reshape(seq_length, input_size)
-
-        if batch_first:
-
-            # Get sequence s (input and output) from feature f in the shape 
-            # (batch_size, seq_length, input_size) 
-            # 
-            # - inputs  = [[[f1_s1_t1, f2_s1_t1, ..., fn_s1_t1], 
-            #               [f1_s1_t2, f2_s1_t2, ..., fn_s1_t2], 
-            #                ..., 
-            #               [f1_s1_tm, f2_s1_tm, ..., fn_s1_tm]],
-            #              ...,
-            #              [[f1_sb_t1, f2_sb_t1, ..., fn_sb_t1], 
-            #               [f1_sb_t2, f2_sb_t2, ..., fn_sb_t2], 
-            #                ..., 
-            #               [f1_sb_tm, f2_sb_tm, ..., fn_sb_tm]]]
-            #
-            #
-            # - outputs = [[f1_s1_tm+1, f2_s1_tm+1, ..., fn_s1_tm+1],
-            #               ...,
-            #              [f1_sb_tm+1, f2_sb_tm+1, ..., fn_sb_tm+1]]
-            #
-            # Where n = input_size, m = seq_length, and b = batch_size.
-
-            inputs[b] = inputs_s
-        else:
-            for s in range(seq_length): inputs[s,b] = inputs_s[s]
-
-        outputs[b] = outputs_s.reshape(1, input_size)
+        # Inherit attributes from nn.Module class
+        super().__init__()
         
-
-        # Update progress bar
-        pb_sequences.refresh(i=b+1)
-
-    io_tensors = {"inputs":inputs, "outputs":outputs}
-
-    # Save the model trained parameters (weights and biases)
-    if filepath!=None:
-        print('Saving training data...', end='\r')
-        torch.save(io_tensors, filepath)
-        print('Saving training data... Done.\n')
-
-    return io_tensors
-
-#%%
+        ########################################################################
+        # Instanciate functions to use on the forward operation:
+        
+        # self.embeds: Creates a list of pre-configured Embedding operations (it 
+        # is configured by passing the number of categories ni and the length of
+        #  the embedding nf)
+        self.embeds = nn.ModuleList([nn.Embedding(ni, nf) for ni,nf in emb_szs])
+        
+        # self.emb_drop: Cancels a proportion p of the embeddings.
+        self.emb_drop = nn.Dropout(p)
+        
+        # self.bn_cont = Normalizes continuous features. This function is 
+        # configured by passing the number of continuous features to normalize.
+        self.bn_cont = nn.BatchNorm1d(n_cont)
+        
+        ########################################################################
+        # Count total number of embeddings (Total number of vector components 
+        # for every feature)
+        n_emb = sum((nf for ni,nf in emb_szs))
+        
+        # Compute total number of inputs to pass to the initial layer (data 
+        # point = Nb. of embeddings + Nb. of continuous variables)
+        n_in = n_emb + n_cont
+        
+        # Run through every layer to set up the operations to perform per layer.
+        # (i.e. layers=[100, 50, 200])
+        layerlist = []
+        for l, n_neurons in enumerate(layers):
+            # On layer l, which contains n_neurons, perform the following 
+            # operations:
+            # 1. Apply Linear neural network model regression (fully connected 
+            # network -> z = Sum(wi*xi+bi))
+            layerlist.append(nn.Linear(n_in,n_neurons))
+            
+            # 2. Apply ReLU activation function (al(z))
+            layerlist.append(nn.ReLU(inplace=True))
+            
+            # 3. Normalize data using the n_neurons
+            layerlist.append(nn.BatchNorm1d(n_neurons))
+            
+            # 4. Cancel out a random proportion p of the neurons to avoid 
+            # overfitting
+            layerlist.append(nn.Dropout(p))
+            
+            # 5. Set new number of input features n_in for the next layer l+1.
+            n_in = n_neurons
+        
+        # Set the last layer of the list which corresponds to the final output
+        layerlist.append(nn.Linear(layers[-1],out_sz))
+        
+        # Instantiate layers as a Neural Network sequential task
+        self.layers = nn.Sequential(*layerlist)
+    
+    def forward(self, x_cat, x_cont):
+        # Initialize embeddings list
+        embeddings = []
+        
+        # Apply embedding function e from self.embeds to the category i
+        # in x_cat array
+        for i,e in enumerate(self.embeds):
+            embeddings.append(e(x_cat[:,i]))
+        
+        # Concatenate embedding sections into 1
+        x = torch.cat(embeddings, 1)
+        
+        # Apply dropout function to the embeddings torch
+        x = self.emb_drop(x)
+        
+        # Normalize continuous variables
+        x_cont = self.bn_cont(x_cont)
+        
+        # Concatenate embeddings with continuous variables into one torch
+        x = torch.cat([x, x_cont], 1)
+        
+        # Process all data points with the layers functions (sequential of 
+        # operations)
+        x = self.layers(x)
+        
+        return x

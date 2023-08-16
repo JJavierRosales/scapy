@@ -1,5 +1,7 @@
+import torch
 import pandas as pd
 import numpy as np
+import random
 import math
 import warnings
 import time
@@ -10,9 +12,17 @@ import datetime
 
 
 #%%
-<<<<<<< HEAD
-@functools.lru_cache(maxsize=None)
-=======
+def seed(seed:int=None):
+    if seed is None:
+        seed = int((time.time()*1e6) % 1e8)
+    global _random_seed
+    _random_seed = seed
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available(): torch.cuda.manual_seed(seed)
+
+#%%
 def docstring(item, internal_attr:bool=False, builtin_attr:bool=False) -> None:
     """Print DocString from a specific Module, Class, or Function.
 
@@ -63,7 +73,6 @@ def plt_matrix(num_subplots:int) -> tuple:
         return rows, cols
         
 #%%
->>>>>>> dev
 def from_date_str_to_days(date, date0='2020-05-22T21:41:31.975', date_format='%Y-%m-%dT%H:%M:%S.%f'):
     date = datetime.datetime.strptime(date, date_format)
     date0 = datetime.datetime.strptime(date0, date_format)
@@ -185,11 +194,6 @@ def tile_rows_cols(num_items):
             num_items -= cols
         return rows, cols
 #%%
-<<<<<<< HEAD
-def add_days_to_date_str(date0, days):
-    date0 = datetime.datetime.strptime(date0, '%Y-%m-%dT%H:%M:%S.%f')
-    date = date0 + datetime.timedelta(days=days)
-=======
 def add_days_to_date_str(date0:datetime, days:float) -> str:
     """Add/Substract natural date from initial date.
 
@@ -203,8 +207,7 @@ def add_days_to_date_str(date0:datetime, days:float) -> str:
     date0 = datetime.datetime.strptime(date0, '%Y-%m-%dT%H:%M:%S.%f')
     date = date0 + datetime.timedelta(days=days)
 
->>>>>>> dev
-    return from_datetime_to_cdm_datetime_str(date)
+    return date.strftime('%Y-%m-%dT%H:%M:%S.%f')
 #%%
 def transform_date_str(date_string, date_format_from, date_format_to):
     date = datetime.datetime.strptime(date_string, date_format_from)
@@ -615,7 +618,7 @@ def tabular_list(input:list, n_cols:int = 3, **kwargs) -> str:
 
 # Define progressbar class
 class ProgressBar():
-    def __init__(self, iterations:int, description:str="", desc_loc:str='left'):
+    def __init__(self, iterations:int, description:str=""):
 
         # Define list of sectors and range of values they apply to
         self._sectors_list = list(['', '\u258F', '\u258D', '\u258C', '\u258B', 
@@ -629,7 +632,8 @@ class ProgressBar():
         else: 
             self._n_iterations = len(self.iterations)
         self.description = description
-        self._desc_loc = desc_loc
+
+        self._header = None
         self._log = ""
         self._i = 0
 
@@ -649,15 +653,14 @@ class ProgressBar():
 
         return (progress, subprogress)
 
-    def format_time(self, duration:float) -> str:
+    @staticmethod
+    def format_time(duration:float) -> str:
 
         m, s = divmod(duration, 60)
         h, m = divmod(m, 60)
+        d, h = divmod(h, 24)
 
-        if int(h)==0:
-            return f'{int(m):02d}:{int(s):02d}'
-        else:
-            return f'{int(h):02d}:{int(m):02d}:{int(s):02d}'
+        return f'{int(d):02d}d:{int(h):02d}h:{int(m):02d}m:{int(s):02d}s'
 
     
     def refresh(self, i:int, description:str = None, 
@@ -668,8 +671,17 @@ class ProgressBar():
             self.description = self.description  
         else: 
             self.description = description
+
+        # Get order of magnitude of the number of iterations and number of 
+        # iterations per second to improve readability of the log message.
+        om_iterations = om(self._n_iterations)
         
         if i > self._i:
+
+            if i==1 and self._header is None:
+                self._header = '\n| {:<31} | {:^16} | {:^16} | {:<}' \
+                    .format('Progress', 'Time', 'Iters/sec', 'Comments')
+                print(self._header)
 
             self._i = i
 
@@ -699,9 +711,7 @@ class ProgressBar():
         idx_subsector = np.sum(self._sectors_range <= subprogress) - 1
         subsector = self._sectors_list[idx_subsector]
 
-        # Get order of magnitude of the number of iterations and number of 
-        # iterations per second to improve readability of the log message.
-        om_iterations = om(self._n_iterations)
+
         if om(self._its_per_second) >= 1:
             om_iter_per_sec = om(self._its_per_second)
         else:
@@ -715,28 +725,18 @@ class ProgressBar():
         pb_progress = f'{self._progress*100:>3.0f}%'
         pb_bar = f'|{sectors}{subsector}{" "*(10-len(sectors)-len(subsector))}|'
         pb_counter=f'{i:>{om_iterations}}/{self._n_iterations:<{om_iterations}}'
-        pb_iter = f'{self._its_per_second:>{om_iter_per_sec}.2f} it/s'
-        pb_time = f'Total time:     {self.format_time(self.edt)}' if last_iter \
-             else f'Remaining time: {self.format_time(self.ert)}'
+        pb_iter = f'{self._its_per_second:>{om_iter_per_sec}.2f}'
+        pb_time = f'{self.format_time(self.edt)}' if last_iter \
+             else f'{self.format_time(self.ert)}'
         
-
-        log = ' {:>4}'.format(pb_progress) + \
-              ' {}'.format(pb_bar) + \
-              ' ({0:>{1}})'.format(pb_counter, (om_iterations+1)*2+1) + \
-              ' | {0:<{1}}'.format(pb_time, 21) + \
-              ' ({0:>{1}})'.format(pb_iter, om_iter_per_sec + 5) + \
-              ' '
-
-        # Locate the description message to the left or right.
-        if self._desc_loc=='left':
-            log = self.description + log  
-        else:
-            log = f'>' + log + self.description
+        log = '| {:^12} {:>4} {:>13} | {:^16} | {:^16} | {}' \
+            .format(pb_bar, pb_progress, pb_counter, 
+                    pb_time, pb_iter, self.description)
 
         # Ensure next log has the same number of characters to so that no 
         # residuals from previous log are left in the screen.
         if len(self._log) > len(log):
-            self._log = log + f'{" "*(len(self._log)-len(log))}'
+            self._log = f'{log:<{len(self._log)}}'
         else:
             self._log = log
 
@@ -744,4 +744,4 @@ class ProgressBar():
         end = '\n' if (i==self._n_iterations and not nested_progress) else '\r'
         
         # Print progress log
-        print(self._log, end = end)
+        print('{:<}'.format(self._log), end = end)

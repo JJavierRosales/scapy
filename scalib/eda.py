@@ -23,9 +23,9 @@ from .cdm import CDM
 from .event import ConjunctionEvent, ConjunctionEventsDataset
 
 def kelvins_challenge_events(filepath:str, num_events:int = None, 
-        date_tca:datetime = None, remove_outliers:bool = True, 
-        drop_features:list = ['c_rcs_estimate', 't_rcs_estimate']) \
-            -> ConjunctionEventsDataset:
+        date_tca:datetime = None, remove_outliers:bool = True,
+        drop_features:list = ['c_rcs_estimate', 't_rcs_estimate'], 
+        print_log:bool=False) -> ConjunctionEventsDataset:
     """Import Kelvins Challenge dataset as a ConjunctionEventsDataset object.
 
     Args:
@@ -36,6 +36,8 @@ def kelvins_challenge_events(filepath:str, num_events:int = None,
         True.
         drop_features (list, optional): List of features from original dataset 
         to remove. Defaults to ['c_rcs_estimate', 't_rcs_estimate'].
+        print_log (bool, optional): Print description of the process. Defaults 
+        to False.
 
     Returns:
         ConjunctionEventsDataset: Object containing all Events objects.
@@ -45,23 +47,24 @@ def kelvins_challenge_events(filepath:str, num_events:int = None,
     print('Loading Kelvins Challenge dataset from external file ...', end='\r')
     kelvins = pd.read_csv(filepath)
     print('Kelvins Challenge dataset imported from external file ' + \
-          '({} entries):\n{}\n'.format(len(kelvins), filepath))
+          '({} entries):\n{}'.format(len(kelvins), filepath))
 
     utils.tabular_list(drop_features,n_cols=1)
     # Drop features if passed to the function
     if len(drop_features)>0:
         kelvins = kelvins.drop(drop_features, axis=1)
-        print('Features removed:\n{}' \
+        if print_log: print('Features removed:\n{}' \
             .format(utils.tabular_list(drop_features, n_cols=2, col_sep=' - ')))
 
     # Remove rows containing NaN values.
-    print('Dropping rows with NaNs...', end='\r')
+    if print_log: print('Dropping rows with NaNs...', end='\r')
     kelvins = kelvins.dropna()
-    print(f'Dropping rows with NaNs... {len(kelvins)} entries remaining.')
+    if print_log: print(f'Dropping rows with NaNs... {len(kelvins)} '
+                        f'entries remaining.')
 
     if remove_outliers:
 
-        print('Removing outliers...', end='\r')
+        if print_log: print('Removing outliers...', end='\r')
         kelvins = kelvins[kelvins['t_sigma_r'] <= 20]
         kelvins = kelvins[kelvins['c_sigma_r'] <= 1000]
         kelvins = kelvins[kelvins['t_sigma_t'] <= 2000]
@@ -69,18 +72,19 @@ def kelvins_challenge_events(filepath:str, num_events:int = None,
         kelvins = kelvins[kelvins['t_sigma_n'] <= 10]
         kelvins = kelvins[kelvins['c_sigma_n'] <= 450]
 
-        print(f'Removing outliers... {len(kelvins)} entries remaining.')
+        if print_log: print(f'Removing outliers... {len(kelvins)} '
+                            f'entries remaining.')
 
     # Shuffle data.
     kelvins = kelvins.sample(frac=1, axis=1).reset_index(drop=True)
 
     # Get CDMs grouped by event_id
     kelvins_events = kelvins.groupby('event_id').groups
-    print('Grouped rows into {} events'.format(len(kelvins_events)))
+    if print_log: print('Grouped rows into {} events'.format(len(kelvins_events)))
 
     # Get TCA as current datetime (not provided in Kelvins dataset).
     if date_tca is None: date_tca = datetime.now()
-    print('Taking TCA as current time: {}\n'.format(date_tca))
+    if print_log: print('Taking TCA as current time: {}'.format(date_tca))
 
     # Get number of events to import from Kelvins dataset.
     num_events = len(kelvins_events) if num_events is None \
@@ -91,8 +95,7 @@ def kelvins_challenge_events(filepath:str, num_events:int = None,
 
     # Iterate over all features to get the time series subsets
     pb_events = utils.ProgressBar(iterations = range(num_events), 
-                    description='Importing Events from Kelvins dataset...', 
-                    desc_loc='right')
+                    description='Importing Events from Kelvins dataset...')
 
     # Initialize counter for progressbar
     n = 0
