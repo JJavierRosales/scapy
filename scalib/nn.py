@@ -11,16 +11,194 @@ from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt, rc
+import warnings
 
 from . import utils
+from . import cells
 from .cdm import ConjunctionDataMessage as CDM
 from .event import ConjunctionEvent as CE
 from .event import ConjunctionEventsDataset as CED
 
-#%% F: FUNCTION TO GET THE LEARNING RATE
-def get_lr(optimizer):
-    for param_group in optimizer.param_groups:
-        return param_group['lr']
+
+#%% LSTM SINGLE LAYER CONSTRUCTOR CLASS
+class LSTMLayer(nn.Module):
+    """Layer constructor for LSTM based RNN architecture.
+    """
+
+    def __init__(self, cell, input_size:int, hidden_size:int, **cell_args:dict):
+        """Initialize LSTM cell.
+
+        Args:
+            cell (constructor): LSTM cell constructor.
+            input_size (int): Number of inputs.
+            hidden_size (int): Number of hidden cells (outputs of the cell).
+            *cell_args (dict, optional): Dictionary containing optional 
+            arguments required for the LSTM cell constructor (i.e. SLIMX 
+            constructor receives the additional parameter 'version').
+        """
+    
+        super(LSTMLayer, self).__init__()
+        
+        # Initialize cell attribute in class witht the LSTM cell object 
+        # initialized.
+        self.cell = cell(input_size = input_size, 
+                         hidden_size = hidden_size, 
+                         **cell_args)
+
+    def forward(self, input: torch.TensorFloat, state:tuple) -> tuple:
+        """Forward operation through all time steps of a given input.
+
+        Args:
+            input (torch.TensorFloat): Tensor containing the values at every 
+            time step of a sequence.
+            state (tuple): Tuple of tensors containing previous hidden state and
+            cell state (at time t-1) required to produce the next output.
+
+        Returns:
+            tuple: Tuple with two tensors:
+                - outputs (torch.TensorFloat): Forecasted values of X for the 
+                    next time step (ht ~ Xt+1) 
+                - states (tuple): Tuple containing  two tensors: one with the 
+                    last hidden state (predicted Xt+1 value) and cell state 
+                    (cell context) required to produce the next prediction.
+        """
+    
+        # Remove tensor dimension fron inputs.
+        inputs = input.unbind(0)
+        outputs = []
+        
+        # Iterate over all the different time steps of a given sequence (inputs).
+        for x_t in inputs:
+            
+            # Forecast Xt value t+1 (hidden state - ht) and the cell state 
+            # holding the cell "configuration parameters" for the next time step.
+            out, state = self.cell(x_t, state)
+            outputs += [out]
+
+        # Return the list of outputs produced by the LSTM cell and the last 
+        # hidden states at time t (hidden_state, cell_state).
+
+        # Return predicted values at every time step (ht ~ Xt+1) and the last 
+        # hidden state (cell configuration/context) from the sequence. Only the 
+        # last hidden states are returned because they are the most relevant in 
+        # terms of learning (learnt from the entire sequence of inputs).
+        return torch.stack(outputs), state
+      
+        
+#%% STACKED LSTM LAYER CONSTRUCTOR CLASS (CUSTOM NATIVE NN.LSTM CLASS)
+class LSTM(nn.Module):
+    """Adapted nn.LSTM class that allows the use of custom LSTM cells.
+    """
+    def __init__(self, input_size:int, hidden_size:int, cell, 
+        batch_first:bool=True, num_layers:int=1, 
+        dropout_probability:float=None, **cell_args:dict) -> None:
+        """Initialize adapted LSTM class.
+
+        Args:
+            input_size (int): Number of input features.
+            hidden_size (int): Number of hidden neurons (outputs of the LSTM).
+            cell (constructor): LSTM cell constructor
+            num_layers (int, optional): Number of stacked LSTM layers (LSTM 
+            depth). Defaults to 1.
+            dropout_probability (float, optional): Dropout probability to use 
+            between consecutive LSTM layers. Only applicable if num_layers is 
+            greater than 1. Defaults to None.
+        """
+    
+        super().__init__()
+        
+        # Get all LSTM layers in a list using the LSTMLayer constructor.
+        layers = [LSTMLayer(cell = cell, 
+                            input_size = input_size, 
+                            hidden_size = hidden_size, 
+                            **cell_args)] + \
+                 [LSTMLayer(cell = cell, 
+                            input_size = hidden_size, 
+                            hidden_size = hidden_size, 
+                            **cell_args) for _ in range(num_layers - 1)]
+    
+        
+        # Convert list of LSTM layers to list of nn.Modules.
+        self.layers = nn.ModuleList(layers)
+        
+        # Introduces a Dropout layer on the outputs of each LSTM layer except
+        # the last layer.
+        self.num_layers = num_layers
+
+        # If number of LSTM layers is 1 and the dropout_probability provided is
+        # not None, print warning to the user.
+        if num_layers == 1:
+            warnings.warn(
+                "Dropout parameter in LSTM class adds dropout layers after " 
+                "all but last recurrent layer. It expects num_layers greater "
+                "> 1, but got num_layers = 1."
+            )
+        
+        # If dropout_probability is provided initialize Dropout Module. 
+        if not dropout_probability is None:
+            self.dropout_layer = nn.Dropout(p = dropout_probability)
+        else:
+            self.dropout_layer = None
+
+
+    def forward(self, input: torch.TensorFloat, states: list) -> tuple:
+        """Forward operation through all time steps of a given input and all 
+        LSTM layers.
+
+        Args:
+            input (torch.TensorFloat): Tensor containing the values at every 
+            time step of a sequence.
+            states (list): List of tuples of tensors of every LSTM layer. Every 
+            tuple contains two tensors for the previous hidden state and cell 
+            state (at time t-1) required to produce the next output for the 
+            layer.
+
+        Returns:
+            tuple: Tuple with two values:
+                - outputs (torch.TensorFloat): Forecasted values of X for the 
+                    next time step (ht ~ Xt+1) 
+                - states (list): List of tuples per LSTM layer. Every tuple 
+                    contains two tensors: one with the last hidden state 
+                    (predicted Xt+1 value) and cell state (cell context) 
+                    required to produce the next prediction of the layer.
+        """
+    
+        
+        if batch_first:
+            output = input
+        else:
+            seq_length, n_features = input.size()
+            input = torch.reshape(input, (1, seq_length, n_features))
+
+        batch_size = input.size(0)
+
+        output = input
+        for b in range(batch_size):
+
+            # Initialize list to store a tuple per layer containing the hidden and 
+            # cell states required for the next output prediction
+            output_states = []
+            b_output = input[b, :, :]
+
+            for i, layer in enumerate(self.layers):
+            
+                state = states[i]
+                b_output, out_state = layer(b_output, state)
+                
+                # Apply the dropout layer except the last layer
+                if (i < self.num_layers - 1) and not (self.dropout_layer is None):
+                    b_output = self.dropout_layer(b_output)
+                    
+                output_states += [out_state]
+
+            output[b, :, :] = b_output
+            
+        # Return the outputs of the LSTM and the hidden states for every LSTM 
+        # layer.
+        return output, output_states if self.num_layers > 1 else out_state
+        
+        
+        
 #%% DATASET OF CONJUNCTION EVENTS DATASET CLASS
 class DatasetEventDataset(Dataset):
     def __init__(self, event_set:list, features:list, 
@@ -478,10 +656,10 @@ class ConjunctionEventForecaster(nn.Module):
         else:
             total_iters = self._hist_train_loss_iters[-1]
 
-        pb_epochs = utils.ProgressBar(iterations=range(epochs), 
-            description = 'Training Feature Forecaster model...')
+        # pb_epochs = utils.ProgressBar(iterations=range(epochs), 
+        #     description = 'Training Feature Forecaster model...')
 
-        for epoch in pb_epochs.iterations:
+        for epoch in range(epochs):
             with torch.no_grad():
                 for _, (events, event_lengths) in enumerate(valid_loader):
 
@@ -572,18 +750,21 @@ class ConjunctionEventForecaster(nn.Module):
                     f'Minibatch {i_minibatch+1}/{len(train_loader)} | ' + \
                     f'Train loss {train_loss:.4e} | ' + \
                     f'Valid loss {valid_loss:.4e}'
-                
-                pb_epochs.refresh(i = epoch+1, description = description, 
-                    nested_progress = True)
+
+                print(description, end='\r')
+
+                # pb_epochs.refresh(i = epoch+1, description = description, 
+                #     nested_progress = True)
 
                 if not scheduler is None: scheduler.step(loss)
 
+            if epoch == epochs-1: print(description, end='\n')
 
             if filename_prefix is not None:
                 filename = filename_prefix + '_epoch_{}'.format(epoch+1)
                 description = f'Saving model checkpoint to file {filename}'
-                pb_epochs.refresh(i = epoch, description = description, 
-                    nested_progress = True)
+                # pb_epochs.refresh(i = epoch, description = description, 
+                #     nested_progress = True)
                 self.save(filename)
 
     @staticmethod      
@@ -766,7 +947,7 @@ class ConjunctionEventForecaster(nn.Module):
 
         # Update progress bar.
         pb_samples.refresh(i = i+1, 
-            description = '> Conjunction Event evolution forecasted.')
+            description = 'Conjunction Event forecasted.')
 
         return events[0] if num_samples==1 \
             else CED(events = events)
