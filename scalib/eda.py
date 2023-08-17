@@ -2,7 +2,6 @@
 from __future__ import annotations
 from typing import Type, Union
 
-
 import os
 import pandas as pd
 import requests
@@ -185,7 +184,7 @@ def kelvins_challenge_events(filepath:str, num_events:int = None,
 
     # Update progress bar.
     pb_events.refresh(i = n-1, 
-        description = f'{len(events)} Conjunction Events imported.')
+        description = f'Dataset imported ({len(events)} events).')
 
     return ConjunctionEventsDataset(events=events)
 

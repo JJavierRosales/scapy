@@ -1,7 +1,6 @@
-# Libraries used for hinting
+# Libraries used for type hinting
 from __future__ import annotations
 from typing import Type, Union
-
 
 import numpy as np
 import warnings
@@ -11,9 +10,7 @@ import pandas as pd
 from . import utils, cfg
 from .cfg import *
 
-
-
-#%%
+#%% CLASS: CONJUNCTIONDATAMESSAGE
 # Based on CCSDS 508.0-B-1
 # https://public.ccsds.org/Pubs/508x0b1e2c1.pdf
 class ConjunctionDataMessage():

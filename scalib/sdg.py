@@ -1,4 +1,7 @@
-# Import Scikit-learn required libraries
+# Libraries used for type hinting
+from __future__ import annotations
+from typing import Type, Union
+
 from sklearn.neighbors import KernelDensity
 import matplotlib.pyplot as plt
 from . import utils 
@@ -9,7 +12,7 @@ import math
 from typing import Union
 import warnings
 
-#%%
+#%% FUNCTION: KDE
 # Define function to compute KDE
 def kde(x:np.ndarray, x_grid:np.ndarray, bandwidth:float, **kwargs) -> np.ndarray:
     """Get probability density function using Scikit-learn KernelDensity class. 
@@ -34,7 +37,7 @@ def kde(x:np.ndarray, x_grid:np.ndarray, bandwidth:float, **kwargs) -> np.ndarra
     epd     = np.exp(log_pdf)
     
     return epd
-#%%
+#%% FUNCTION: PLOT_SCIPY_PDF
 def plot_scipy_pdf(data: np.ndarray, stdist: st, **kwargs) -> None:
     """Plot histogram and PDF based on a given distribution and its parameters
 
@@ -105,7 +108,7 @@ def plot_scipy_pdf(data: np.ndarray, stdist: st, **kwargs) -> None:
     plt.show()
     
     return None
-#%%
+#%% FUNCTION: PLOT_KDE
 def plot_kde(data:np.ndarray, bandwidths:np.ndarray, **kwargs) -> None:
     """Plot barchart with actual and estimated probability density.
 
@@ -159,7 +162,7 @@ def plot_kde(data:np.ndarray, bandwidths:np.ndarray, **kwargs) -> None:
     
     return None
 
-#%%
+#%% FUNCTION: BWS_STATSMODELS
 import statsmodels.api as smapi
 import statsmodels as sm
 
@@ -199,7 +202,7 @@ def bws_statsmodels(data: np.ndarray, methods: Union[list, str]=['normal_referen
     warnings.filterwarnings('default')
         
     return bandwidths
-#%%
+#%% FUNCTION: BWS_MSECV
 def bws_msecv(data: np.ndarray, bins:dict, conv_accuracy:float = 1e-5, 
                     n_batches_min:int = 2, n_batches_max:int = 10, print_log:bool = True) -> dict:
     """Computes optimal bandwidth minimizing MSE actual vs estimated density through cross-validation.

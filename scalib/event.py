@@ -498,7 +498,7 @@ class ConjunctionEventsDataset(EventsPlotting):
 
         # Print final message in progress bar.
         pb_events.refresh(i = n+1, 
-            description='Conjunction Events dataset imported successfully.')
+            description='DataFrame imported as Events dataset.')
         
         # Create ConjunctionEventsDataset object with the list of events 
         # extracted.
@@ -539,7 +539,7 @@ class ConjunctionEventsDataset(EventsPlotting):
         
         # Update progress bar with the last message.
         pb_events.refresh(i = e+1, 
-            description='Conjunction Events dataset imported successfully.')
+            description='Imported as DataFrame.')
         
         return pd.concat(event_dataframes, ignore_index=True)
 

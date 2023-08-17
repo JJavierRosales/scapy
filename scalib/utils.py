@@ -1,3 +1,7 @@
+# Libraries used for type hinting
+from __future__ import annotations
+from typing import Type, Union
+
 import torch
 import pandas as pd
 import numpy as np
@@ -10,8 +14,11 @@ from typing import Union
 from sklearn.linear_model import LinearRegression
 import datetime
 
-
-#%%
+#%% FUNCTION: GET_LR
+def get_lr(optimizer):
+    for param_group in optimizer.param_groups:
+        return param_group['lr']
+#%% FUNCTION: SEED
 def seed(seed:int=None):
     if seed is None:
         seed = int((time.time()*1e6) % 1e8)
@@ -22,7 +29,7 @@ def seed(seed:int=None):
     torch.manual_seed(seed)
     if torch.cuda.is_available(): torch.cuda.manual_seed(seed)
 
-#%%
+#%% FUNCTION: DOCSTRING
 def docstring(item, internal_attr:bool=False, builtin_attr:bool=False) -> None:
     """Print DocString from a specific Module, Class, or Function.
 
@@ -50,7 +57,7 @@ def docstring(item, internal_attr:bool=False, builtin_attr:bool=False) -> None:
     for method in methods:  
         print('Method: {}\n\n{}\n{}' \
             .format(method,getattr(item, method).__doc__, "_"*80))
-#%%
+#%% FUNCTION: PLT_MATRIX
 def plt_matrix(num_subplots:int) -> tuple:
     """Calculate number of rows and columns for a square matrix 
     containing subplots.
@@ -72,7 +79,7 @@ def plt_matrix(num_subplots:int) -> tuple:
             
         return rows, cols
         
-#%%
+#%% FUNCTION: FROM_DATE_STR_TO_DAYS
 def from_date_str_to_days(date, date0='2020-05-22T21:41:31.975', date_format='%Y-%m-%dT%H:%M:%S.%f'):
     date = datetime.datetime.strptime(date, date_format)
     date0 = datetime.datetime.strptime(date0, date_format)
@@ -80,7 +87,7 @@ def from_date_str_to_days(date, date0='2020-05-22T21:41:31.975', date_format='%Y
     days = dd.days
     days_fraction = (dd.seconds + dd.microseconds/1e6) / (60*60*24)
     return days + days_fraction
-#%%
+#%% FUNCTION: DOY_2_DATE
 def doy_2_date(value, doy, year, idx):
     '''
     Written by Andrew Ng, 18/03/2022, 
@@ -105,7 +112,7 @@ def doy_2_date(value, doy, year, idx):
     # Extract final date string. Use zfill() to pad year, month and day fields with zeroes if not filling up sufficient spaces. 
     value = str(date_vec[0]).zfill(4) +'-' + str(date_vec[1]).zfill(2) + '-' + str(date_vec[2]).zfill(2) + 'T' + value[idx+4:-1] 
     return value
-#%%
+#%% FUNCTION: GET_CCSDS_TIME_FORMAT
 def get_ccsds_time_format(time_string):
     '''
     Adapted by Andrew Ng, 18/3/2022.
@@ -172,7 +179,7 @@ def get_ccsds_time_format(time_string):
     return time_format
 
 
-#%%
+#%% FUNCTION: HAS_NAN_OR_INF
 def has_nan_or_inf(value):
     if torch.is_tensor(value):
         value = torch.sum(value)
@@ -182,7 +189,7 @@ def has_nan_or_inf(value):
     else:
         value = float(value)
         return math.isnan(value) or math.isinf(value)
-#%%
+#%% FUNCTION: TILE_ROWS_COLS
 def tile_rows_cols(num_items):
     if num_items < 5:
         return 1, num_items
@@ -193,7 +200,7 @@ def tile_rows_cols(num_items):
             rows += 1
             num_items -= cols
         return rows, cols
-#%%
+#%% FUNCTION: ADD_DAYS_TO_DATE_STR
 def add_days_to_date_str(date0:datetime, days:float) -> str:
     """Add/Substract natural date from initial date.
 
@@ -208,25 +215,25 @@ def add_days_to_date_str(date0:datetime, days:float) -> str:
     date = date0 + datetime.timedelta(days=days)
 
     return date.strftime('%Y-%m-%dT%H:%M:%S.%f')
-#%%
+#%% FUNCTION: TRANSFORM_DATE_STR
 def transform_date_str(date_string, date_format_from, date_format_to):
     date = datetime.datetime.strptime(date_string, date_format_from)
     return date.strftime(date_format_to)
-#%%
+#%% FUNCTION: IS_DATE
 def is_date(date_string, date_format):
     try:
         datetime.datetime.strptime(date_string, date_format)
         return True
     except:
         return False
-#%%
+#%% FUNCTION: IS_NUMBER
 def is_number(s):
     try:
         float(s)
         return True
     except ValueError:
         return False
-#%%
+#%% FUNCTION: ARGLOCMAX
 def arglocmax(a:np.ndarray):
 
     condition = np.r_[True, a[1:] > a[:-1]] & np.r_[a[:-1] > a[1:], True]
@@ -235,7 +242,7 @@ def arglocmax(a:np.ndarray):
 
     return index_array
 
-#%%
+#%% FUNCTION: ARGLOCMIN
 def arglocmin(a:np.ndarray):
 
     condition = np.r_[True, a[1:] < a[:-1]] & np.r_[a[:-1] < a[1:], True]
@@ -244,7 +251,7 @@ def arglocmin(a:np.ndarray):
 
     return index_array
 
-#%%
+#%% FUNCTION: NBINS
 def nbins(data:np.ndarray, rule:str = 'fd') -> dict:
     """Calculate number of bins and bin width for histograms.
 
@@ -287,7 +294,7 @@ def nbins(data:np.ndarray, rule:str = 'fd') -> dict:
         bins_range = np.linspace(data.min(),data.max()+bins_width[rule], n_bins)
     
     return {'n': n_bins, 'width': bins_width[rule], 'range': bins_range}
-#%%
+#%% FUNCTION: OM
 def om(value: float) -> int:
     """Get order of magnitude of value.
 
@@ -305,7 +312,7 @@ def om(value: float) -> int:
     if abs(value)==np.inf: return np.inf
     
     return int(math.floor(math.log(abs(value), 10)))
-#%%
+#%% FUNCTION: ROUND_BY_OM
 def round_by_om(value:float, abs_method:str='ceil', **kwargs) -> float:
     """Round up/down float by specifying rounding of magnitude.
 
@@ -336,8 +343,7 @@ def round_by_om(value:float, abs_method:str='ceil', **kwargs) -> float:
 
     return methods[abs_method](value/initial_om)*initial_om
 
-#%%
-#%%
+#%% FUNCTION: DF2LATEX
 def df2latex(df: pd.DataFrame, column_format:str='c') -> str:
     """Convert pandas DataFrame to latex table.
 
@@ -365,7 +371,7 @@ def df2latex(df: pd.DataFrame, column_format:str='c') -> str:
         
     return table
 
-#%%
+#%% FUNCTION: NUMBER2LATEX
 def number2latex(value) -> str:
     """Format a given value depending on its order of magnitude.
 
@@ -396,7 +402,7 @@ def number2latex(value) -> str:
         output = output.replace('{+0','{').replace('{-0','{-') + r'}$'
 
     return output
-#%%
+#%% FUNCTION: OUTLIERS_BOUNDARIES
 def outliers_boundaries(data: np.ndarray, threshold: Union[tuple, float]=1.5, 
         positive_only:bool=False) -> Union[tuple, np.ndarray, np.ndarray]:
     """Compute limits of standard data within a given data distribution.
@@ -432,7 +438,7 @@ def outliers_boundaries(data: np.ndarray, threshold: Union[tuple, float]=1.5,
     std_data = data[~filter_outliers]
 
     return std_lims, std_data, outliers
-#%%
+#%% FUNCTION: COMPUTE_VIF
 def compute_vif(df_input: pd.DataFrame) -> pd.DataFrame:
     """Compute Variance Inflation Factor to evaluate multicolinearity.
 
@@ -477,7 +483,7 @@ def compute_vif(df_input: pd.DataFrame) -> pd.DataFrame:
     result = pd.DataFrame(index=features, columns=['VIF'], data=r2_scores)
         
     return result
-#%%
+#%% FUNCTION: VIF_SELECTION
 def vif_selection(df_input:pd.DataFrame, maxvif:float=5.0) -> dict:
     """Variable selection using Variance Inflation Factor (VIF) threshold.
 
@@ -547,7 +553,7 @@ def vif_selection(df_input:pd.DataFrame, maxvif:float=5.0) -> dict:
               'correlated': correlated}
               
     return output
-#%%
+#%% FUNCTION: TABULAR_LIST
 def tabular_list(input:list, n_cols:int = 3, **kwargs) -> str:
     """Format list as a tabular table in string format.
 
@@ -614,9 +620,7 @@ def tabular_list(input:list, n_cols:int = 3, **kwargs) -> str:
         output = output + f'\n'
 
     return output
-#%%
-
-# Define progressbar class
+#%% CLASS: PROGRESSBAR
 class ProgressBar():
     def __init__(self, iterations:int, description:str=""):
 
@@ -639,6 +643,7 @@ class ProgressBar():
 
         # Initialize start time of iteration
         self._it_start_time = time.time()
+        self._start_time = time.time()
 
         # Initialize average duration of iteration
         self.avg_it_duration = 0.0
@@ -658,9 +663,8 @@ class ProgressBar():
 
         m, s = divmod(duration, 60)
         h, m = divmod(m, 60)
-        d, h = divmod(h, 24)
 
-        return f'{int(d):02d}d:{int(h):02d}h:{int(m):02d}m:{int(s):02d}s'
+        return f'{int(h):02d}h:{int(m):02d}m:{int(s):02d}s'
 
     
     def refresh(self, i:int, description:str = None, 
@@ -674,13 +678,15 @@ class ProgressBar():
 
         # Get order of magnitude of the number of iterations and number of 
         # iterations per second to improve readability of the log message.
-        om_iterations = om(self._n_iterations)
+        om_iterations = om(self._n_iterations+1) + 1
         
         if i > self._i:
 
             if i==1 and self._header is None:
-                self._header = '\n| {:<31} | {:^16} | {:^16} | {:<}' \
-                    .format('Progress', 'Time', 'Iters/sec', 'Comments')
+                self._header = f"\n| {'Progress':<{19 + 2*om_iterations+1}}" + \
+                    f" | {'Time':^11} | " + \
+                    f"{'Iters/sec':^{max(9, om_iterations+3)}} | " + \
+                    f"{'Comments':<}"
                 print(self._header)
 
             self._i = i
@@ -689,10 +695,8 @@ class ProgressBar():
             # iterations per second.
             self._it_duration = time.time() - self._it_start_time \
                                if self._i > 1 else 0.0
-            self._its_per_second = 1.0/self._it_duration if self._i > 1 else 0.0
-
-            self.avg_it_duration = (self.avg_it_duration*(self._i - 1) + \
-                self._it_duration)/self._i if self._i > 2 else self._it_duration
+            self.avg_it_duration = (time.time() - self._start_time)/self._i
+            self._its_per_second = 1.0/self.avg_it_duration
             
             # Compute estimated time remaining and overall duration.
             self.ert = self.avg_it_duration * \
@@ -711,7 +715,6 @@ class ProgressBar():
         idx_subsector = np.sum(self._sectors_range <= subprogress) - 1
         subsector = self._sectors_list[idx_subsector]
 
-
         if om(self._its_per_second) >= 1:
             om_iter_per_sec = om(self._its_per_second)
         else:
@@ -724,14 +727,16 @@ class ProgressBar():
         # print log depending on the number of iteration
         pb_progress = f'{self._progress*100:>3.0f}%'
         pb_bar = f'|{sectors}{subsector}{" "*(10-len(sectors)-len(subsector))}|'
-        pb_counter=f'{i:>{om_iterations}}/{self._n_iterations:<{om_iterations}}'
-        pb_iter = f'{self._its_per_second:>{om_iter_per_sec}.2f}'
+        pb_counter = f'{i}/{self._n_iterations}'
+        pb_iter = f'{self._its_per_second:.2f}'
         pb_time = f'{self.format_time(self.edt)}' if last_iter \
              else f'{self.format_time(self.ert)}'
         
-        log = '| {:^12} {:>4} {:>13} | {:^16} | {:^16} | {}' \
-            .format(pb_bar, pb_progress, pb_counter, 
-                    pb_time, pb_iter, self.description)
+        log = f"| {pb_progress:>4} {pb_bar:^12} " + \
+              f"({pb_counter:>{2*om_iterations+1}})" + \
+              f"| {pb_time:^11} " + \
+              f"| {pb_iter:^{max(9, om_iterations+3)}} " + \
+              f"| {self.description}"
 
         # Ensure next log has the same number of characters to so that no 
         # residuals from previous log are left in the screen.
