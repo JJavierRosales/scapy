@@ -14,11 +14,17 @@ from typing import Union
 from sklearn.linear_model import LinearRegression
 import datetime
 
-#%% FUNCTION: GET_LR
+# Get current working directory path for the tool parent folder and print it.
+from pathlib import Path
+import os
+parent_folder = 'scalib'
+cwd = str(Path(os.getcwd()[:os.getcwd().index(parent_folder)+len(parent_folder)]))
+
+#%% FUNCTION: get_lr
 def get_lr(optimizer):
     for param_group in optimizer.param_groups:
         return param_group['lr']
-#%% FUNCTION: SEED
+#%% FUNCTION: seed
 def seed(seed:int=None):
     if seed is None:
         seed = int((time.time()*1e6) % 1e8)
@@ -29,7 +35,7 @@ def seed(seed:int=None):
     torch.manual_seed(seed)
     if torch.cuda.is_available(): torch.cuda.manual_seed(seed)
 
-#%% FUNCTION: DOCSTRING
+#%% FUNCTION: docstring
 def docstring(item, internal_attr:bool=False, builtin_attr:bool=False) -> None:
     """Print DocString from a specific Module, Class, or Function.
 
@@ -57,7 +63,7 @@ def docstring(item, internal_attr:bool=False, builtin_attr:bool=False) -> None:
     for method in methods:  
         print('Method: {}\n\n{}\n{}' \
             .format(method,getattr(item, method).__doc__, "_"*80))
-#%% FUNCTION: PLT_MATRIX
+#%% FUNCTION: plt_matrix
 def plt_matrix(num_subplots:int) -> tuple:
     """Calculate number of rows and columns for a square matrix 
     containing subplots.
@@ -79,47 +85,70 @@ def plt_matrix(num_subplots:int) -> tuple:
             
         return rows, cols
         
-#%% FUNCTION: FROM_DATE_STR_TO_DAYS
-def from_date_str_to_days(date, date0='2020-05-22T21:41:31.975', date_format='%Y-%m-%dT%H:%M:%S.%f'):
+#%% FUNCTION: from_date_str_to_days
+def from_date_str_to_days(date:datetime.datetime, 
+                          date0:str='2020-05-22T21:41:31.975', 
+                          date_format:str='%Y-%m-%dT%H:%M:%S.%f') -> float:
+    """Convert date in string format to date.
+
+    Args:
+        date (datetime): Final date.
+        date0 (str, optional): Initial date. Defaults to 
+        '2020-05-22T21:41:31.975'.
+        date_format (str, optional): Format of initial and final date. Defaults 
+        to '%Y-%m-%dT%H:%M:%S.%f'.
+
+    Returns:
+        float: Number of days.
+    """
+    
+    # Convert date in string format as datetime type
     date = datetime.datetime.strptime(date, date_format)
     date0 = datetime.datetime.strptime(date0, date_format)
+
+    # Get time between final and initial dates.
     dd = date-date0
     days = dd.days
     days_fraction = (dd.seconds + dd.microseconds/1e6) / (60*60*24)
-    return days + days_fraction
-#%% FUNCTION: DOY_2_DATE
-def doy_2_date(value, doy, year, idx):
-    '''
-    Written by Andrew Ng, 18/03/2022, 
-    Based on source code @ https://github.com/nasa/CARA_Analysis_Tools/blob/master/two-dimension_Pc/Main/TransformationCode/TimeTransformations/DOY2Date.m
-    Use the datetime python package. 
-    doy_2_date  - Converts Day of Year (DOY) date format to date format.
-    
-    Args:
-        - value(``str``): Original date time string with day of year format "YYYY-DDDTHH:MM:SS.ff"
-        - doy  (``str``): The day of year in the DOY format. 
-        - year (``str``): The year.
-        - idx  (``int``): Index of the start of the original "value" string at which characters 'DDD' are found. 
-    Returns: 
-        -value (``str``): Transformed date in traditional date format. i.e.: "YYYY-mm-ddTHH:MM:SS.ff"
 
-    '''
+    return days + days_fraction
+#%% FUNCTION: doy_2_date
+def doy_2_date(value:str, doy:str, year:int, idx:int) -> str:
+    """Converts Day of Year (DOY) date format to date format.
+
+    Args:
+        value (str): Original date time string with day of year format 
+        "YYYY-DDDTHH:MM:SS.ff"
+        doy (str): The day of year in the DOY format.
+        year (int): The year.
+        idx (int): Index of the start of the original "value" string at which 
+        characters 'DDD' are found.
+
+    Returns:
+        str: Transformed date in traditional date format.
+    """
     # Calculate datetime format
-    date_num = datetime.datetime(int(year), 1, 1) + datetime.timedelta(int(doy) - 1)
+    date_num = datetime.datetime(int(year), 1, 1) + \
+               datetime.timedelta(int(doy) - 1)
 
     # Split datetime object into a date list
-    date_vec = [date_num.year, date_num.month, date_num.day, date_num.hour, date_num.minute]
-    # Extract final date string. Use zfill() to pad year, month and day fields with zeroes if not filling up sufficient spaces. 
-    value = str(date_vec[0]).zfill(4) +'-' + str(date_vec[1]).zfill(2) + '-' + str(date_vec[2]).zfill(2) + 'T' + value[idx+4:-1] 
+    date_vec = [date_num.year, date_num.month, date_num.day, 
+                date_num.hour, date_num.minute]
+    
+    # Extract final date string. Use zfill() to pad year, month and day fields 
+    # with zeroes if not filling up sufficient spaces. 
+    value = str(date_vec[0]).zfill(4) +'-' + \
+            str(date_vec[1]).zfill(2) + '-' + \
+            str(date_vec[2]).zfill(2) + 'T' + \
+            value[idx+4:-1] 
+    
     return value
-#%% FUNCTION: GET_CCSDS_TIME_FORMAT
-def get_ccsds_time_format(time_string):
-    '''
-    Adapted by Andrew Ng, 18/3/2022.
-    Original MATLAB source code found at: https://github.com/nasa/CARA_Analysis_Tools/blob/master/two-dimension_Pc/Main/TransformationCode/TimeTransformations/getCcsdsTimeFormat.m
-    get_ccsds_time_format  -  process and outputs the format of the time string extracted from the CDM. 
-    The CCSDS time format is required to be of the general form
-    yyyy-[mm-dd|ddd]THH:MM:SS[.F*][Z]
+#%% FUNCTION: get_ccsds_time_format
+def get_ccsds_time_format(time_string:str) -> str:
+    """Get the format of the datetime string in the CDM. The CCSDS time format 
+    is required to be of the general form yyyy-[mm-dd|ddd]THH:MM:SS[.F*][Z]. The
+    following considerations are taken into account:
+
     (1) The date and time fields are separated by a "T".
     (2) The date field has a four digit year followed by either a two digit 
         month and two digit day, or a three digit day-of-year.  
@@ -133,54 +162,80 @@ def get_ccsds_time_format(time_string):
     (7) The time string can end with an optional "Z" time zone indicator
 
     Args:
-        - time_string(``str``): Original time string stored in CDM.
-    Returns: 
-        - time_format(``str``): Outputs the format of the time string. It must be of the form yyyy-[mm-dd|ddd]THH:MM:SS[.F*][Z], otherwise it is invalid and a RuntimeError is raised.
+        time_string (str): Original time string stored in CDM. It must be of the 
+        form yyyy-[mm-dd|ddd]THH:MM:SS[.F*][Z], otherwise it is invalid and a 
+        RuntimeError is raised.
 
-    '''
-    time_format = []
+    Raises:
+        RuntimeError: 0 or more than 1 T separator.
+        RuntimeError: Datetime format not recognised.
+        RuntimeError: Second decimals not identified.
+
+    Returns:
+        str: Outputs the format of the time string. 
+    """
+
+    # Count number of T separators.
     numT = time_string.count('T')
-    if numT == -1:
-        # Case when this is 'T' does not exist in time_string
-        raise RuntimeError(f"*** Error -- Invalid CCSDS time string: {time_string}\nNo 'T' separator found between date and time portions of the string")
-    elif numT > 1:
-        raise RuntimeError(f"*** Error -- Invalid CCSDS time string: {time_string} \nMore than one 'T' separator found between date and time portions of the string")
+
+    # Raise error if found 0 or more than one separator.
+    if numT == -1 or numT > 1:
+        # Raise error if time_string does not contain a single 'T'.
+        raise RuntimeError(f"Invalid CCSDS time string: {time_string}."
+                           f" {numT} 'T' separator(s) found between date and "
+                           f"time portions of the string.")
+    
+    # Get the position of the separator T (separates date from time).
     idx_T = time_string.find('T')
+
     if idx_T ==10:
         time_format = "yyyy-mm-ddTHH:MM:SS"
     elif idx_T ==8:
         time_format = "yyyy-DDDTHH:MM:SS"
     else: 
-        raise RuntimeError(f"*** Error -- Invalid CCSDS time string: {time_string} \nDate format not one of yyyy-mm-dd or yyyy-DDD.\n")
-    # % Check if 'Z' time zone indicator appended to the string
-    if time_string[-1]=='Z':
-        z_opt = True
-    else:
-        z_opt = False
-    # % Find location of the fraction of seconds decimal separator
+        raise RuntimeError(f"Invalid CCSDS time string: {time_string}. "
+                           f"Date format not one of yyyy-mm-dd or yyyy-DDD.")
+    
+    # Check if 'Z' time zone indicator appended to the string
+    z_opt = (time_string[-1]=='Z') 
+
+    # Get location of the fraction of seconds decimal separator
     num_decimal = time_string.count('.')
     if num_decimal > 1:
-        #time_format = []
-        raise RuntimeError(f"*** Error -- Invalid CCSDS time string: {time_string}\nMore than one fraction of seconds decimal separator ('.') found.\n")
+        raise RuntimeError(f"Invalid CCSDS time string: {time_string}. "
+                           f"More than one fraction of seconds decimal "
+                           f"separator ('.') found.")
+    
+    # Get the position of the dot in the seconds decimals
     idx_decimal = time_string.find('.')
-    nfrac = 0
+
+    # If datetime has seconds decimals, get the number of decimals.
     if num_decimal != 0:
-        if z_opt:
-            nfrac = len(time_string) - 1 - idx_decimal -1
-        else: 
-            nfrac = len(time_string) - 1 - idx_decimal
-    if nfrac > 0:
-        frac_str = '.' + ('F'*nfrac)
-    else:
-        frac_str = ""
-    if z_opt:
-        frac_str = frac_str+'Z'
+        n_decimals = len(time_string) - 1 - idx_decimal - (1 if z_opt else 0)
+
+    # Get second decimals format if CDM datetime has decimals
+    frac_str = ('.' + ('F'*n_decimals)) if n_decimals > 0 else ""
+
+    # Add Z time zone indicator if present.
+    frac_str = frac_str + ('Z' if z_opt else '')
+
+    # Join time_format, seconds fraction (if any) and time zone (if any).
     time_format = time_format + frac_str
+
     return time_format
 
 
-#%% FUNCTION: HAS_NAN_OR_INF
-def has_nan_or_inf(value):
+#%% FUNCTION: has_nan_or_inf
+def has_nan_or_inf(value: Union[float, torch.TensorFloat]) -> bool:
+    """Check if value(s) contain any infinite or Not a Number (NaN).
+
+    Args:
+        value (Union[float, torch.TensorFloat]): Value(s) to check.
+
+    Returns:
+        bool: True if value(s) has infinite or NaN value(s), False otherwise.
+    """
+
     if torch.is_tensor(value):
         value = torch.sum(value)
         isnan = int(torch.isnan(value)) > 0
@@ -189,8 +244,19 @@ def has_nan_or_inf(value):
     else:
         value = float(value)
         return math.isnan(value) or math.isinf(value)
-#%% FUNCTION: TILE_ROWS_COLS
-def tile_rows_cols(num_items):
+#%% FUNCTION: tile_rows_cols
+def tile_rows_cols(num_items:int) -> tuple:
+    """Get number of rows and columns a series of items can be organised to 
+    follow a square shaped frame.
+
+    Args:
+        num_items (int): Number of items to tile.
+
+    Returns:
+        tuple: tuple with the number of rows and columns the items can be 
+        organised in a squared shape frame.
+    """
+
     if num_items < 5:
         return 1, num_items
     else:
@@ -200,7 +266,7 @@ def tile_rows_cols(num_items):
             rows += 1
             num_items -= cols
         return rows, cols
-#%% FUNCTION: ADD_DAYS_TO_DATE_STR
+#%% FUNCTION: add_days_to_date_str
 def add_days_to_date_str(date0:datetime, days:float) -> str:
     """Add/Substract natural date from initial date.
 
@@ -215,26 +281,62 @@ def add_days_to_date_str(date0:datetime, days:float) -> str:
     date = date0 + datetime.timedelta(days=days)
 
     return date.strftime('%Y-%m-%dT%H:%M:%S.%f')
-#%% FUNCTION: TRANSFORM_DATE_STR
-def transform_date_str(date_string, date_format_from, date_format_to):
-    date = datetime.datetime.strptime(date_string, date_format_from)
-    return date.strftime(date_format_to)
-#%% FUNCTION: IS_DATE
-def is_date(date_string, date_format):
+#%% FUNCTION: transform_date_str
+def transform_date_str(date_string:str, from_format:str, to_format:str) -> str:
+    """Convert date in string format from certain format to another format.
+
+    Args:
+        date_string (str): Date as string type to change the format.
+        from_format (str): Format in which the date is provided.
+        to_format (str): String datetime format of conversion
+
+    Returns:
+        str: Date in the new string datetime format.
+    """
+    date = datetime.datetime.strptime(date_string, from_format)
+
+    return date.strftime(to_format)
+#%% FUNCTION: is_date
+def is_date(date_string:str, date_format:str) -> bool:
+    """Check a date in string format is an actual date.
+
+    Args:
+        date_string (str): Date in string format to check.
+        date_format (str): Format string in which the date is provided.
+
+    Returns:
+        bool: True if it is an actual date, False otherwise.
+    """
     try:
         datetime.datetime.strptime(date_string, date_format)
         return True
     except:
         return False
-#%% FUNCTION: IS_NUMBER
-def is_number(s):
+#%% FUNCTION: is_number
+def is_number(s:Union[float, str]) -> bool:
+    """Check if value is a number or a string.
+
+    Args:
+        s (Union[float, str]): Value to check.
+
+    Returns:
+        bool: True if is a number, False otherwise.
+    """
     try:
         float(s)
         return True
     except ValueError:
         return False
-#%% FUNCTION: ARGLOCMAX
-def arglocmax(a:np.ndarray):
+#%% FUNCTION: arglocmax
+def arglocmax(a:np.ndarray) -> np.ndarray:
+    """Find the indeces of the local maximums of an array.
+
+    Args:
+        a (np.ndarray): Numpy array to check.
+
+    Returns:
+        np.ndarray: Indeces of the local maximum.
+    """
 
     condition = np.r_[True, a[1:] > a[:-1]] & np.r_[a[:-1] > a[1:], True]
     index_array = np.asarray([i for i, c in enumerate(condition) if c], 
@@ -242,8 +344,16 @@ def arglocmax(a:np.ndarray):
 
     return index_array
 
-#%% FUNCTION: ARGLOCMIN
-def arglocmin(a:np.ndarray):
+#%% FUNCTION: arglocmin
+def arglocmin(a:np.ndarray) -> np.ndarray:
+    """Find the indeces of the local minimums of an array.
+
+    Args:
+        a (np.ndarray): Numpy array to check.
+
+    Returns:
+        np.ndarray: Indeces of the local maximum.
+    """
 
     condition = np.r_[True, a[1:] < a[:-1]] & np.r_[a[:-1] < a[1:], True]
     index_array = np.asarray([i for i, c in enumerate(condition) if c], 
@@ -251,7 +361,7 @@ def arglocmin(a:np.ndarray):
 
     return index_array
 
-#%% FUNCTION: NBINS
+#%% FUNCTION: nbins
 def nbins(data:np.ndarray, rule:str = 'fd') -> dict:
     """Calculate number of bins and bin width for histograms.
 
@@ -294,7 +404,7 @@ def nbins(data:np.ndarray, rule:str = 'fd') -> dict:
         bins_range = np.linspace(data.min(),data.max()+bins_width[rule], n_bins)
     
     return {'n': n_bins, 'width': bins_width[rule], 'range': bins_range}
-#%% FUNCTION: OM
+#%% FUNCTION: om
 def om(value: float) -> int:
     """Get order of magnitude of value.
 
@@ -312,7 +422,7 @@ def om(value: float) -> int:
     if abs(value)==np.inf: return np.inf
     
     return int(math.floor(math.log(abs(value), 10)))
-#%% FUNCTION: ROUND_BY_OM
+#%% FUNCTION: round_by_om
 def round_by_om(value:float, abs_method:str='ceil', **kwargs) -> float:
     """Round up/down float by specifying rounding of magnitude.
 
@@ -343,7 +453,7 @@ def round_by_om(value:float, abs_method:str='ceil', **kwargs) -> float:
 
     return methods[abs_method](value/initial_om)*initial_om
 
-#%% FUNCTION: DF2LATEX
+#%% FUNCTION: df2latex
 def df2latex(df: pd.DataFrame, column_format:str='c') -> str:
     """Convert pandas DataFrame to latex table.
 
@@ -371,7 +481,7 @@ def df2latex(df: pd.DataFrame, column_format:str='c') -> str:
         
     return table
 
-#%% FUNCTION: NUMBER2LATEX
+#%% FUNCTION: number2latex
 def number2latex(value) -> str:
     """Format a given value depending on its order of magnitude.
 
@@ -402,7 +512,7 @@ def number2latex(value) -> str:
         output = output.replace('{+0','{').replace('{-0','{-') + r'}$'
 
     return output
-#%% FUNCTION: OUTLIERS_BOUNDARIES
+#%% FUNCTION: outliers_boundaries
 def outliers_boundaries(data: np.ndarray, threshold: Union[tuple, float]=1.5, 
         positive_only:bool=False) -> Union[tuple, np.ndarray, np.ndarray]:
     """Compute limits of standard data within a given data distribution.
@@ -438,7 +548,7 @@ def outliers_boundaries(data: np.ndarray, threshold: Union[tuple, float]=1.5,
     std_data = data[~filter_outliers]
 
     return std_lims, std_data, outliers
-#%% FUNCTION: COMPUTE_VIF
+#%% FUNCTION: compute_vif
 def compute_vif(df_input: pd.DataFrame) -> pd.DataFrame:
     """Compute Variance Inflation Factor to evaluate multicolinearity.
 
@@ -483,7 +593,7 @@ def compute_vif(df_input: pd.DataFrame) -> pd.DataFrame:
     result = pd.DataFrame(index=features, columns=['VIF'], data=r2_scores)
         
     return result
-#%% FUNCTION: VIF_SELECTION
+#%% FUNCTION: vif_selection
 def vif_selection(df_input:pd.DataFrame, maxvif:float=5.0) -> dict:
     """Variable selection using Variance Inflation Factor (VIF) threshold.
 
@@ -553,7 +663,7 @@ def vif_selection(df_input:pd.DataFrame, maxvif:float=5.0) -> dict:
               'correlated': correlated}
               
     return output
-#%% FUNCTION: TABULAR_LIST
+#%% FUNCTION: tabular_list
 def tabular_list(input:list, n_cols:int = 3, **kwargs) -> str:
     """Format list as a tabular table in string format.
 
@@ -620,9 +730,9 @@ def tabular_list(input:list, n_cols:int = 3, **kwargs) -> str:
         output = output + f'\n'
 
     return output
-#%% CLASS: PROGRESSBAR
+#%% CLASS: ProgressBar
 class ProgressBar():
-    def __init__(self, iterations:int, description:str=""):
+    def __init__(self, iterations:Union[int,list], description:str=""):
 
         # Define list of sectors and range of values they apply to
         self._sectors_list = list(['', '\u258F', '\u258D', '\u258C', '\u258B', 
@@ -714,11 +824,6 @@ class ProgressBar():
         # Get number of 8th sections as subsectors
         idx_subsector = np.sum(self._sectors_range <= subprogress) - 1
         subsector = self._sectors_list[idx_subsector]
-
-        if om(self._its_per_second) >= 1:
-            om_iter_per_sec = om(self._its_per_second)
-        else:
-            om_iter_per_sec =  1
 
         # Check if it is the last iteration.
         last_iter = (i==self._n_iterations and not nested_progress)
