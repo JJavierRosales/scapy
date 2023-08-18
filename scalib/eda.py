@@ -1,6 +1,6 @@
 # Libraries used for hinting
 from __future__ import annotations
-from typing import Type, Union
+from typing import Union
 
 import os
 import pandas as pd
@@ -14,17 +14,17 @@ from datetime import datetime, timedelta
 
 from . import utils
 
-from sklearn.metrics import r2_score
+from sklearn.metrics import r2_score as r2_sklearn
 
+from .cdm import ConjunctionDataMessage as CDM
+from .event import ConjunctionEvent as CE 
+from .event import ConjunctionEventsDataset as CED
 
-#%%
-from .cdm import CDM
-from .event import ConjunctionEvent, ConjunctionEventsDataset
-
+#%% FUNCTION: kelvins_challenge_events
 def kelvins_challenge_events(filepath:str, num_events:int = None, 
         date_tca:datetime = None, remove_outliers:bool = True,
         drop_features:list = ['c_rcs_estimate', 't_rcs_estimate'], 
-        print_log:bool=False) -> ConjunctionEventsDataset:
+        print_log:bool=False) -> CED:
     """Import Kelvins Challenge dataset as a ConjunctionEventsDataset object.
 
     Args:
@@ -180,16 +180,16 @@ def kelvins_challenge_events(filepath:str, num_events:int = None,
             pb_events.refresh(i = n, nested_progress = True)
 
         # Append ConjunctionEvent object to events list.
-        events.append(ConjunctionEvent(event_cdms))
+        events.append(CE(event_cdms))
 
     # Update progress bar.
     pb_events.refresh(i = n-1, 
         description = f'Dataset imported ({len(events)} events).')
 
-    return ConjunctionEventsDataset(events=events)
+    return CED(events=events)
 
 
-#%%
+#%% FUNCTION: import_cdm_data
 def import_cdm_data(filepath: str) -> pd.DataFrame:
     """Import CDM dataset from the Collision Avoidance Challenge and cast 
     features into the correct data types.
@@ -223,12 +223,20 @@ def import_cdm_data(filepath: str) -> pd.DataFrame:
 
     return df
 
-#%%
+#%% CLASS: RobustScalerClipper
 # Define Collision Risk Probability Estimator
 class RobustScalerClipper():
 
     def __init__(self, data:np.ndarray, quantiles:tuple=(0.01, 0.99), 
-                 with_offset:bool=False):
+                 with_offset:bool=False) -> None:
+        """Initialize object with scaled data and associated parameters.
+
+        Args:
+            data (np.ndarray): Data to scale.
+            quantiles (tuple, optional): Quantiles used to normalize the data. 
+            Defaults to (0.01, 0.99).
+            with_offset (bool, optional): Offset scaled data. Defaults to False.
+        """
 
         # Instanciate data, quantiles, scale, center (if applicable), and 
         # scaled data
@@ -255,7 +263,13 @@ class RobustScalerClipper():
         else: 
             self.scaled_data = self.data/self.scale
 
-    def clip(self, clip_lims:tuple = (-1.0, 1.0)):
+    def clip(self, clip_lims:tuple = (-1.0, 1.0)) -> RobustScalerClipper:
+        """Clip data using upper and/or lower limits.
+
+        Args:
+            clip_lims (tuple, optional): Limits to clip the data. Defaults to 
+            (-1.0, 1.0).
+        """
 
         self.clip_lims = clip_lims
         self.clipped_data = np.clip(self.scaled_data, 
@@ -265,10 +279,16 @@ class RobustScalerClipper():
         self.outliers = np.sum(self.scaled_data>clip_lims[1]) + \
                         np.sum(self.scaled_data<clip_lims[0])
         
-        return self
-#%%
+#%% CLASS: FitScipyDistribution
 class FitScipyDistribution:
-    def __init__(self, data, distribution):
+
+    def __init__(self, data:np.ndarray, distribution:st) -> None:
+        """Initialize distribution parameters and information.
+
+        Args:
+            data (np.ndarray): NumPy array with the values to fit.
+            distribution (st): SciPy distribution to fit to the data.
+        """
 
         # Instanciate distribution and distribution name
         self.dist = distribution
@@ -295,7 +315,7 @@ class FitScipyDistribution:
             params = {'loc':   fitting_output[-2], 'scale': fitting_output[-1],
                       'arg_values': [], 'arg_names': []}
 
-            if distribution.shapes!=None: 
+            if distribution.shapes != None: 
                 params['arg_names']  = distribution.shapes.split(", ") 
                 params['arg_values'] = list(fitting_output[:-2])
 
@@ -315,8 +335,19 @@ class FitScipyDistribution:
         toc = time.process_time()
         self.processing_time = toc-tic
         
-    def rvs(self, **kwargs):
-        """Generate data distribution from stats function."""
+    def rvs(self, size:int=1000, random_state:int=1, **kwargs) -> np.ndarray:
+        """Generate data distribution from stats function. Random Variates of 
+        given Size.
+
+        Args:
+            size (int, optional): Size of NumPy array to generate. Defaults to 
+            1000.
+            random_state (int, optional): Random state for reproducibility. 
+            Defaults to 1.
+
+        Returns:
+            np.ndarray: Random data as a NumPy array following the distribution.
+        """
         
         # Get arguments and keyword based arguments for the random data 
         # generation
@@ -342,15 +373,15 @@ class FitScipyDistribution:
             
             # If no limit or data range is required, used built-in RVS function 
             # from SciPy.
-            kwds.update({'size': kwargs.get('size', int(1e3)), \
-                         'random_state':kwargs.get('random_state', 1)})
+            kwds.update({'size': size, 'random_state':random_state})
             data = self.dist.rvs(*args, **kwds)
         
         return data
 
         
-    def r2_score(self):
-        """Compute coefficient of determination (R2 score)"""
+    def r2_score(self) -> float:
+        """Compute coefficient of determination (R2 score)
+        """
         
         if self.params == None: return 0
         
@@ -373,7 +404,7 @@ class FitScipyDistribution:
             self.n_bins = len(bin_centers)
             self.bins_width = bin_edges[1]-bin_edges[0]
 
-            r2 = r2_score(y, pdf)
+            r2 = r2_sklearn(y, pdf)
             r2 = r2 if abs(r2)<=1 else r2/abs(r2)
         except Exception:
             r2 = 0
@@ -384,8 +415,16 @@ class FitScipyDistribution:
         
         return r2
     
-    def pdf(self, size=10000, tol=1e-4):
-        """Generate distributions's Probability Distribution Function"""
+    def pdf(self, size:int=10000) -> pd.Series:
+        """Generate distributions's Probability Distribution Function (PDF).
+
+        Args:
+            size (int, optional): Size of the array resulting from the PDF. 
+            Defaults to 10000.
+
+        Returns:
+            pd.Series: Series with the PDF values over an array of X values.
+        """
         
         if self.params == None: return None
         
@@ -395,7 +434,7 @@ class FitScipyDistribution:
         scale = self.params['scale']
         
         # Get standard data limits for better representation
-        std_lims, std_data, outliers = \
+        std_lims, _, _ = \
             utils.outliers_boundaries(data = self.data.flatten(), 
                                       threshold = 1.5, 
                                       positive_only = False)
@@ -408,23 +447,29 @@ class FitScipyDistribution:
         
         return pdf
 
-#%%
-def get_scipy_distributions(cwd:str, 
+#%% FUNCTION: get_scipy_distribution
+def get_scipy_distributions(filepath:str, 
     stdists_exc:list = ['studentized_range', 'levy_l_gen', 'levy_stable']) \
     -> list:
     """Get list of continuous distributions from SciPy.org website
 
     Args:
-        cwd (str): Current working directory path.
+        filepath (str): Current working directory path.
         stdists_exc (list, optional): List of distributions names to exclude 
         from list. Defaults to ['studentized_range', 'levy_l_gen', 
         'levy_stable'].
 
     Returns:
-        list: List of distributions available in SciPy.org.
+        list: List of distributions available either in SciPy.org or locally.
     """
     
-    filepath = os.path.join(cwd,'notebooks','nbtemp','scipy_distributions.csv')
+    folderpath = os.path.dirname(filepath)
+    if not os.path.exists(folderpath):
+        raise ValueError(f'Folder ({folderpath}) does not exist.')
+    
+
+    # filepath = os.path.join(cwd,'notebooks','nbtemp','scipy_distributions.csv')
+
     try:
         # Get Continuous distributions table from SciPy website.
         url = 'https://docs.scipy.org/doc/scipy/reference/stats.html'
@@ -434,19 +479,22 @@ def get_scipy_distributions(cwd:str,
         # notebook offline.
         df_stdist = pd.DataFrame(data = tbody[0].to_list(), 
                                  columns=['scipy_distributions'])
-        
-        if not os.path.exists(os.path.join(cwd,'notebooks','nbtemp')):
-            os.mkdir(os.path.join(cwd,'notebooks','nbtemp'))
-        
+        print("Importing SciPy distributions from SciPy.org ...", end='\r')
         # Export dataframe as CSV file in the temporary folder
         df_stdist.to_csv(filepath, sep=',')
+        print(f"{len(df_stdist)} distributions imported from SciPy.org.")
         
     except Exception:
-        print("Could not read SciPy website. Importing data from local file...")
-        
+
+        if not os.path.exists(filepath):
+            raise ValueError(f'Working offline. File ({filepath}) could not '
+                             f'be imported because it does not exist.')
+
+        print("Importing SciPy distributions from local file...", end='\r')
         # Import scipy distributions if working offline
         df_stdist = pd.read_csv(filepath, sep=',', header=0, index_col=None, 
                                 skipinitialspace=False)
+        print(f"{len(df_stdist)} SciPy distributions imported from local file.")
 
         pass
     
@@ -465,8 +513,8 @@ def get_scipy_distributions(cwd:str,
 
     return stdists_list
 
-#%%
-def find_best_distribution(data: pd.Series, scipy_distributions:list):
+#%% FUNCTION: find_best_distribution
+def find_best_distribution(data: pd.Series, scipy_distributions:list) -> tuple:
     """Find best fitted distribution (higher R2 score vs actual probability 
     density).
 
@@ -475,29 +523,35 @@ def find_best_distribution(data: pd.Series, scipy_distributions:list):
         scipy_distributions (list): List of SciPy distributions to fit.
 
     Returns:
-        Union[instance, pd.DataFrame]: Best distribution object and ranking of 
-        all distributions with its R2 score.
+        tuple: Best distribution object and ranking of all distributions with 
+        its R2 score.
     """
     
     # Remove non-finite values and initialize best holder using the norm 
     # distribution
     data = data[data.notnull()]
     best_stdist = FitScipyDistribution(data, st.norm)
+
+
+    pb_dist = utils.ProgressBar(iterations = scipy_distributions, 
+                      description = "Looking for best distribution")
     
     fitting_results = []
 
     # Estimate distribution parameters from data
-    for i, stdist_i in enumerate(scipy_distributions):
+    for i, stdist_i in enumerate(pb_dist.iterations):
         
-        # Fit stdist to real data
+        # Fit stdist to real data.
         fitted_stdist = FitScipyDistribution(data, stdist_i)
 
-        print(f'Progress: {(i+1)/len(scipy_distributions)*100:3.1f}% '
-              f'({i:3d}/{len(scipy_distributions)-1:3d})'
-              f' | Best dist. (R2={best_stdist.r2_score():.2f}) '
-              f'-> {best_stdist.name:22s}'
-              f' | New dist. (R2={fitted_stdist.r2_score():.2f}) '
-              f'-> {fitted_stdist.name:22s} ', end='\r')
+        # Update progress bar.
+        description = f"Best: {best_stdist.name} " + \
+                      f"(R2={best_stdist.r2_score():.2f}) / " + \
+                      f"Fitting {fitted_stdist.name} ..."
+        
+        pb_dist.refresh(i = i+1, 
+                        description = description,
+                        nested_progress = True)
         
         # If it improves the current best distribution, reassign best 
         # distribution
@@ -507,26 +561,34 @@ def find_best_distribution(data: pd.Series, scipy_distributions:list):
         params = {'params': fitted_stdist.params, 
                   'r2_score': fitted_stdist.r2_score()}
         fitting_results.append([fitted_stdist.name, params])
+
+    # Show completed process
+    pb_dist.refresh(i = i+1, description = description.split(' / ')[0])
         
     # Sort values of dataframe by sse ascending and and re-index.
-    ranking = pd.DataFrame(data=fitting_results, 
+    ranking = pd.DataFrame(data = fitting_results, 
                            columns=['distribution', 'results'])
     
     
     return best_stdist, ranking
 
-#%%
-def plot_histogram(df_input:pd.DataFrame, features:list, 
-                   bins_rule:str='fd', **kwargs) -> None:
+#%% FUNCTION: plot_histogram
+def plot_histogram(df_input:pd.DataFrame, features:list, figsize:tuple = (8, 3), 
+                   return_ax:bool=False, bins_rule:str='fd', **kwargs) \
+                    -> Union[None, plt.Axes]:
     """Plot custom histogram for dataframe features. 
 
     Args:
         df_input (pd.DataFrame): Pandas dataframe to plot.
         features (list): Features from pandas dataframe to plot.
-        bins_rule (str): Rule to compute number of bins. Defaults to 'fd'.
+        figsize (tuple, optional): Figure size. Defaults to (8, 3).
+        return_ax (bool, optional): Return Axes object if True. Defaults to 
+        False.
+        bins_rule (str, optional): Rule to compute number of bins. Defaults to 
+        'fd'.
 
     Returns:
-        None
+        Union[None, plt.Axes]: Axes object if return_ax = True, None otherwise.
     """
 
     # Check that all features are categorical or numerical
@@ -542,9 +604,7 @@ def plot_histogram(df_input:pd.DataFrame, features:list,
     all_data = df_input[features].dropna().to_numpy().flatten()
 
     # Create figure object
-    plt.figure(figsize=kwargs.get('figsize', (8,3)))
-    
-    axes = plt.gca()
+    fig, ax = plt.subplots(figsize = figsize)
 
     # Get kwargs specific for the plot
     plt_kwargs = dict(edgecolor='white', align='mid', alpha=1.0, rwidth=1.0)
@@ -553,7 +613,7 @@ def plot_histogram(df_input:pd.DataFrame, features:list,
     if not 'category' in df_input[features].dtypes.values:
         # Compute number of outliers for better representation on histogram
 
-        std_lims, std_data, outliers = utils.outliers_boundaries(all_data, 
+        std_lims, std_data, _ = utils.outliers_boundaries(all_data, 
                                             threshold = 1.5, 
                                             positive_only=np.sum(all_data<0)==0)
 
@@ -563,11 +623,11 @@ def plot_histogram(df_input:pd.DataFrame, features:list,
                                              abs_method='floor'), 
                            utils.round_by_om(min(std_lims[1], all_data.max()), 
                                              abs_method='ceil')))
-        plt.xlim(xlim)
+        ax.set_xlim(xlim)
         plt_kwargs.update(dict(range=xlim))
 
         # Calculate number of bins to plot histogram
-        nbins =  utils.nbins(std_data, bins_rule)
+        nbins = utils.nbins(std_data, bins_rule)
         bins = kwargs.get('bins', nbins['range'])
 
         description_table = pd.DataFrame(data=df_input[features]) \
@@ -591,8 +651,8 @@ def plot_histogram(df_input:pd.DataFrame, features:list,
 
     # Print statistical summary before the histogram
     if kwargs.get('describe', True): 
-        t = axes.text(1.04, 0.5, text, size=10, ha='left', 
-                  va='center', c='black', transform=axes.transAxes, 
+        t = ax.text(1.04, 0.5, text, size=10, ha='left', 
+                  va='center', c='black', transform=ax.transAxes, 
                   bbox=dict(facecolor='white', edgecolor='black', 
                   alpha=0.75, pad=5))
 
@@ -600,32 +660,37 @@ def plot_histogram(df_input:pd.DataFrame, features:list,
     if 'hist_kwargs' in list(kwargs.keys()):
         for f in range(len(features), 0, -1):
             plt_kwargs.update(kwargs['hist_kwargs'][f-1])
-            plt.hist(data[f-1], bins=bins, **plt_kwargs)
+            ax.hist(data[f-1], bins=bins, **plt_kwargs)
     else:
-        plt.hist(data, bins=bins, **plt_kwargs)
+        ax.hist(data, bins=bins, **plt_kwargs)
     
     # Compute new Y-axis limits for a better plot representation.
-    ylim = (axes.get_ylim()[0], 
-            utils.round_by_om(axes.get_ylim()[1], abs_method='ceil'))
+    ylim = (ax.get_ylim()[0], 
+            utils.round_by_om(ax.get_ylim()[1], abs_method='ceil'))
     ylim = kwargs.get('ylim', ylim)
-    plt.yticks(np.linspace(ylim[0],ylim[1],5))
-    plt.ylim(ylim)
+    ax.set_yticks(np.linspace(ylim[0], ylim[1], 5))
+    ax.set_ylim(ylim)
 
     # Set axis labels and title
     xlabel = kwargs.get('xlabel', r'\texttt{' + " ".join(features) + '}')
     ylabel = kwargs.get('ylabel', r'Number of objects')
     title  = kwargs.get('title',  r'Histogram')
     
-    plt.ylabel(ylabel=ylabel, fontsize=12) 
-    plt.xlabel(xlabel=xlabel, fontsize=12)
-    plt.title(label=title,   fontsize=12)
+    ax.set_ylabel(ylabel=ylabel, fontsize=12) 
+    ax.set_xlabel(xlabel=xlabel, fontsize=12)
+    ax.set_title(label=title,   fontsize=12)
     
     # Plot legend and print plot
-    if kwargs.get('legend', True): plt.legend(loc='upper right', fontsize=10)
-    plt.grid(True, linestyle='--')
-    if 'filepath' in list(kwargs.keys()): 
+    if kwargs.get('legend', True): ax.legend(loc='upper right', fontsize=10)
+    ax.grid(True, linestyle='--')
+
+    # Remove blank spaces around the plot to be more compact.
+    plt.tight_layout()
+
+    if 'filepath' in list(kwargs.keys()):
         plt.savefig(kwargs['filepath'], bbox_inches='tight')
     plt.show()
 
-    return None
+    if return_ax:
+        return ax
 

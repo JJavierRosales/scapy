@@ -1,16 +1,16 @@
 # Libraries used for type hinting
 from __future__ import annotations
-from typing import Type, Union
+from typing import Union
 
 import numpy as np
 import warnings
 from datetime import datetime as dt
 import copy
 import pandas as pd
-from . import utils, cfg
+from . import utils
 from .cfg import *
 
-#%% CLASS: CONJUNCTIONDATAMESSAGE
+#%% CLASS: ConjunctionDataMessage
 # Based on CCSDS 508.0-B-1
 # https://public.ccsds.org/Pubs/508x0b1e2c1.pdf
 class ConjunctionDataMessage():
@@ -719,4 +719,3 @@ class ConjunctionDataMessage():
             raise ValueError('Invalid key: {}'.format(key))
 
 
-CDM = ConjunctionDataMessage
