@@ -1,6 +1,6 @@
 # Libraries used for type hinting
 from __future__ import annotations
-from typing import Type, Union
+from typing import Union
 
 import torch
 from torch import nn
@@ -42,10 +42,6 @@ class LSTM_Vanilla(nn.Module):
         # Initialize inputs and hidden sizes
         self.input_size = input_size
         self.hidden_size = hidden_size
-        
-        # Define Sigmoid and Tanh functions
-        self._sigmoid = nn.Sigmoid()
-        self._tanh = nn.Tanh()
         
         # Initialize gate components (weight and bias) for every gate:
         for gate in ['forget','input','cell','output']:
@@ -113,7 +109,7 @@ class LSTM_Vanilla(nn.Module):
             
             # New information part that will be injected in the new context 
             # (candidate cell)
-            g = self._tanh(x + h) * input_gate
+            g = nn.Tanh(x + h) * input_gate
 
             # Apply forget gate to forget old context/cell information.
             c = forget_gate * c_prev
@@ -125,7 +121,7 @@ class LSTM_Vanilla(nn.Module):
         else:
         
             # Apply sigmoid function to gate.
-            return self._sigmoid(x + h)
+            return nn.Sigmoid(x + h)
    
 
     def forward(self, x:torch.TensorFloat, hidden_states:tuple) -> tuple:
@@ -159,7 +155,7 @@ class LSTM_Vanilla(nn.Module):
         o = self._forward_gate(gate = 'output', x = x, h = h_prev)
         
         # Produce next hidden output
-        h_next = o * self._tanh(c_next)
+        h_next = o * nn.Tanh(c_next)
         
         return h_next, c_next
 
@@ -351,14 +347,11 @@ class LSTM_NXG(nn.Module):
         if not drop_gate in ['input', 'forget', 'output']:
             raise ValueError('Parameter drop_gate ({}) not valid.' \
                              .format(drop_gate))
+        
         self.drop_gate = drop_gate
         
-        # Define Sigmoid and Tanh functions
-        self._sigmoid = nn.Sigmoid()
-        self._tanh = nn.Tanh()
-        
         # Initialize gate components (weight and bias) for every gate:
-        for g, gate in enumerate(['forget','input','cell','output']):
+        for gate in ['forget','input','cell','output']:
         
             # Skip initialization for the gate to drop.
             if drop_gate == gate: continue
@@ -403,7 +396,7 @@ class LSTM_NXG(nn.Module):
                                  'and/or c_prev missing.')
             
             # New information part that will be injected in the new context 
-            g = self._tanh(x + h) * input_gate
+            g = nn.Tanh(x + h) * input_gate
 
             # Apply forget gate to forget old context/cell information.
             c = forget_gate * c_prev
@@ -415,7 +408,7 @@ class LSTM_NXG(nn.Module):
         else:
         
             # Apply sigmoid function to gate.
-            return self._sigmoid(x + h)
+            return nn.Sigmoid(x + h)
    
 
     def forward(self, x:torch.TensorFloat, hidden_states:tuple) -> tuple:
@@ -438,7 +431,7 @@ class LSTM_NXG(nn.Module):
         o = self._forward_gate(gate = 'output', x = x, h = h_prev)
         
         # Produce next hidden output
-        h_next = o * self._tanh(c_next)
+        h_next = o * nn.Tanh(c_next)
         
         
         return h_next, c_next
@@ -452,19 +445,15 @@ class LSTM_NXGAF(nn.Module):
     """
     def __init__(self, input_size:int, hidden_size:int, naf_gate:str) -> None:
     
-        super(LSTM_NXAF, self).__init__()
+        super(LSTM_NXGAF, self).__init__()
         
         # Initialize inputs and hidden sizes
         self.input_size = input_size
         self.hidden_size = hidden_size
         self.naf_gate = naf_gate
         
-        # Define Sigmoid and Tanh functions
-        self._sigmoid = nn.Sigmoid()
-        self._tanh = nn.Tanh()
-        
         # Initialize gate components (weight and bias) for every gate:
-        for g, gate in enumerate(['forget','input','cell','output']):
+        for gate in ['forget','input','cell','output']:
         
             # Initialize gate weights (Wxg) that will process inputs at time t.
             # Gate component computation = Wxg * xt
@@ -503,8 +492,8 @@ class LSTM_NXGAF(nn.Module):
                                  'and/or c_prev missing.')
             
             # New information part that will be injected in the new context
-            if self.naf_gate == cell:
-                g = self._tanh(x + h) * input_gate
+            if self.naf_gate == 'cell':
+                g = nn.Tanh(x + h) * input_gate
             else:
                 g = (x + h) * input_gate
 
@@ -518,7 +507,7 @@ class LSTM_NXGAF(nn.Module):
         else:
         
             # Apply sigmoid function to gate if applicable.
-            return (x + h) if self.naf_gate == cell else self._sigmoid(x + h)
+            return (x + h) if self.naf_gate == 'cell' else nn.Sigmoid(x + h)
    
 
     def forward(self, x:torch.TensorFloat, hidden_states:tuple) -> tuple:
@@ -541,7 +530,7 @@ class LSTM_NXGAF(nn.Module):
         o = self._forward_gate(gate = 'output', x = x, h = h_prev)
         
         # Produce next hidden output
-        h_next = o * self._tanh(c_next)
+        h_next = o * nn.Tanh(c_next)
         
         
         return h_next, c_next
@@ -559,10 +548,6 @@ class GRU_Vanilla(nn.Module):
         # Initialize inputs and hidden sizes
         self.input_size = input_size
         self.hidden_size = hidden_size
-        
-        # Define Sigmoid and Tanh functions
-        self._sigmoid = nn.Sigmoid()
-        self._tanh = nn.Tanh()
         
         # Initialize gate components (weight and bias) for every gate:
         for gate in ['update','reset', 'hidden']:
@@ -601,7 +586,7 @@ class GRU_Vanilla(nn.Module):
                                  'and/or c_prev missing.')
 
             # New information part that will be injected in the new context 
-            h_candidate = self._tanh(x + \
+            h_candidate = nn.Tanh(x + \
                 getattr(self,'gate_{}_h'.format(gate))(reset_gate * h))
 
             return h_candidate
@@ -610,7 +595,7 @@ class GRU_Vanilla(nn.Module):
             h = getattr(self,'gate_{}_h'.format(gate))(h)
 
             # Apply sigmoid function to gate.
-            return self._sigmoid(x + h)
+            return nn.Sigmoid(x + h)
         
     def forward(self, x:torch.TensorFloat, h_prev:torch.TensorFloat) -> tuple:
             
@@ -648,10 +633,6 @@ class GRU_SLIMX(nn.Module):
         self.input_size = input_size
         self.hidden_size = hidden_size
         self._version = slim_version
-        
-        # Define Sigmoid and Tanh functions
-        self._sigmoid = nn.Sigmoid()
-        self._tanh = nn.Tanh()
         
         # Initialize gate components (weight and bias) for every gate:
         for gate in ['update','reset', 'hidden']:
@@ -709,7 +690,7 @@ class GRU_SLIMX(nn.Module):
                                  'and/or c_prev missing.')
 
             # New information part that will be injected in the new context 
-            h_candidate = self._tanh(x + \
+            h_candidate = nn.Tanh(x + \
                 getattr(self,'gate_{}_h'.format(gate))(reset_gate * h))
 
             return h_candidate
@@ -718,7 +699,7 @@ class GRU_SLIMX(nn.Module):
             h = getattr(self,'gate_{}_h'.format(gate))(h)
 
             # Apply sigmoid function to gate.
-            return self._sigmoid(x + h)
+            return nn.Sigmoid(x + h)
         
     def forward(self, x:torch.TensorFloat, h_prev:torch.TensorFloat) -> tuple:
             
@@ -737,4 +718,3 @@ class GRU_SLIMX(nn.Module):
         
         return h_next
 
-#%%
