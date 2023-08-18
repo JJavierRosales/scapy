@@ -1,6 +1,6 @@
 # Libraries used for hinting
 from __future__ import annotations
-from typing import Type, Union
+from typing import Union
 
 import pandas as pd
 import numpy as np
@@ -11,14 +11,16 @@ import copy
 import os
 import re
 
-from . import utils, cfg
+from . import utils
 from .cdm import ConjunctionDataMessage as CDM
 
 mpl.rcParams['axes.unicode_minus'] = False
-plt_default_backend = plt.get_backend()
 
-#%%
+#%% CLASS: EventsPlotting
 class EventsPlotting():
+
+    def __init__(self):
+        pass
 
     def plot_features(self, features:Union[list, str], figsize:tuple=None, 
                       axs:Union[np.ndarray, plt.Axes] = None, 
@@ -42,7 +44,6 @@ class EventsPlotting():
             Union[None, np.ndarray]: Array of axis objects if return_axs = True, 
             None otherwise.
         """
-
 
         # Convert features to list if only one is provided.
         if not isinstance(features, list): features = [features]
@@ -120,7 +121,7 @@ class EventsPlotting():
                    list(map(lambda f: 'OBJECT2_'+f, features))
         return self.plot_features(features, figsize = figsize, *args, **kwargs)
 
-#%%
+#%% CLASS: ConjunctionEvent
 class ConjunctionEvent(EventsPlotting):
     def __init__(self, cdms:list = None, filepaths:list = None) -> None:
         """Initialize event object. Defaults to empty ConjunctionEvent (0 CDMs).
@@ -137,7 +138,8 @@ class ConjunctionEvent(EventsPlotting):
         """
         if cdms is not None:
             if filepaths is not None:
-                raise RuntimeError('Expecting only one of cdms, filepaths, not both')
+                raise RuntimeError('Expecting only one list of CDM objects' + \
+                                   ' or their filepaths, not both.')
             self._cdms = cdms
         elif filepaths is not None:
             self._cdms = [CDM(filepath) for filepath in filepaths]
@@ -347,7 +349,7 @@ class ConjunctionEvent(EventsPlotting):
         """
         return len(self._cdms)
 
-#%%
+#%% CLASS: ConjunctionEventsDataset
 class ConjunctionEventsDataset(EventsPlotting):
     def __init__(self, cdms_dir:str = None, cdm_extension:str = '.cdm.kvn.txt',
                  events:list = None) -> None:
