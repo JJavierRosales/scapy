@@ -10,9 +10,7 @@ import pandas as pd
 from . import utils
 from .cfg import *
 
-#%% CLASS: ConjunctionDataMessage
-# Based on CCSDS 508.0-B-1
-# https://public.ccsds.org/Pubs/508x0b1e2c1.pdf
+#%% CLASS: ConjunctionDataMessage 
 class ConjunctionDataMessage():
     def __init__(self, filepath:str = None, set_defaults:bool = True):
         # Header
@@ -23,29 +21,19 @@ class ConjunctionDataMessage():
         #  Metadata, OD, State, Covariance
         # Comments are optional and not currently supported by this class
 
-        for cluster, keys in cdm_clusters.items():
-            # Set clusters of CDM fields (header, relative_metadata, ... etc.)
-            # containing the list of features embeded in every cluster.
-            setattr(self, '_keys_' + cluster, keys)
-
-            if 'obligatory' in cluster: continue
-
-            # Initialize dictionary with the list of features contained in the
-            # cluster (i.e. tca, miss_distance, relative_speed, ... etc.)
-            dict_values = dict.fromkeys(keys)
-
-            # Initialize variable to store the values of the CDM per cluster
-            if cluster in ['header', 'relative_metadata']:
-                setattr(self, '_values_' + cluster, dict_values)
+        for cluster, features in cdm_clusters.items():
+            setattr(self,f"_keys_{cluster}", features)
+            dict_values = dict.fromkeys(getattr(self,f"_keys_{cluster}"))
+            if not cluster in ['header', 'relative_metadata']:
+                setattr(self,f"_values_object_{cluster}",
+                        [dict_values.copy(), dict_values.copy()])
             else:
-                setattr(self, '_values_object_' + cluster, 
-                        [dict_values, dict_values])
+                setattr(self,f"_values_{cluster}", dict_values.copy())
 
-        for cluster, keys in cdm_clusters_obligatory.items():
-            # Set clusters of CDM fields (header, relative_metadata, ... etc.)
-            # containing the list of features embeded in every cluster.
-            setattr(self, '_keys_' + cluster, keys)
+        for cluster, features in cdm_clusters_obligatory.items():
+            setattr(self,f"_keys_{cluster}", features)
 
+        
         # This holds extra key, value pairs associated with each CDM object, 
         # used internally by the Kessler codebase and not a part of the CDM 
         # standard
@@ -78,7 +66,6 @@ class ConjunctionDataMessage():
         ret = ConjunctionDataMessage()
 
         for cluster in cdm_clusters.keys():
-            if 'obligatory' in cluster: continue
 
             # Set clusters of CDM fields (header, relative_metadata, ... etc.)
             # containing the list of features embeded in every cluster.
@@ -92,16 +79,15 @@ class ConjunctionDataMessage():
 
         return ret
 
-    def copy_from(self, other_cdm) -> None:
+    def copy_from(self, other_cdm:ConjunctionDataMessage) -> None:
         """Copies CDM object into self attribute within class.
 
         Args:
-            other_cdm (Type[ConjunctionDataMessage]): External CDM to create the
+            other_cdm (ConjunctionDataMessage): External CDM to create the
             copy from.
         """
 
         for cluster in cdm_clusters.keys():
-            if 'obligatory' in cluster: continue
 
             # Set clusters of CDM fields (header, relative_metadata, ... etc.)
             # containing the list of features embeded in every cluster.
@@ -113,7 +99,6 @@ class ConjunctionDataMessage():
             # Create a deep copy of CDM object containing values.
             setattr(self, cluster, copy.deepcopy(getattr(other_cdm, cluster)))
 
-
     def to_dict(self) -> dict:
         """Convert CDM object to dictionary containing all the values.
 
@@ -124,43 +109,35 @@ class ConjunctionDataMessage():
         # Initialize output dictionary
         data = {}
 
-        # Iterate over all clusters and keys from cdm_clusters.
-        for cluster, keys in cdm_clusters.items():
-            if 'obligatory' in cluster: continue
+        # Iterate over both objects and CDM clusters.
+        # WARNING /!\: Dictionary is sorted in Python, it is important to have 
+        # the data in the following order "HEADER", "RELATIVE_METADATA", 
+        # "OBJECT1", "OBJECT2" because KVN is processed in order.
+        for i in [0, 1]:
+            # Iterate over all clusters and features contained on them.
+            for cluster, features in cdm_clusters.items():
+                # Save dictionary items if cluster is either header or 
+                # relative_metadata but only for the first loop.
+                if cluster in ['header', 'relative_metadata'] and i==0:
+                    data_object = dict.fromkeys(features)
+                    values = getattr(self, '_values_' + cluster)
+                    for feature, value in values.items():
+                        data_object[feature] = value
+                # Save dictionary items fot OBJECT i if cluster is not header 
+                # nor relative_metadata.
+                if not cluster in ['header', 'relative_metadata']:
+                    values = getattr(self, '_values_object_' + cluster)
+                    
+                    prefix = f'OBJECT{i+1}_'
 
-            # Set clusters of CDM fields (header, relative_metadata, ... etc.)
-            # containing the list of features embeded in every cluster.
-            if cluster in ['header', 'relative_metadata']:
+                    data_object = dict.fromkeys([prefix+f for f in features])
+        
+                    for feature, value in values[i].items():
+                        data_object[prefix + feature] = value
 
-                # Add values to dictionary for header and relative_metadata 
-                # clusters.
-                data.update(getattr(self, '_values_' + cluster))
+                data.update(data_object)
 
-            else:
-                
-                # Iterate over the two objects for object-specific features in
-                # a CDM
-                for i in [0, 1]:
-                    # Create the prefix for the object in the format OBJECT_X.
-                    prefix = 'OBJECT{}_'.format(i+1)
-
-                    # Redefine keys in cluster to include the object prefix.
-                    keys = map(lambda x: prefix+x, keys)
-
-                    # Initialize dictionary for the cluster.
-                    data_object = dict.fromkeys(keys)
-
-                    # Get values dictionaty from cluster specific to the object.
-                    values = getattr(self, '_values_object_' + cluster)[i]
-
-                    # Fill cluster dictionary with all the values.
-                    for key, value in values.items():
-                        data_object[prefix+key] = value
-
-                    # Update final dictionary.
-                    data.update(data_object)
-
-        # Add any extra values.
+        # Append extradata to the dictionary.
         data.update(self._values_extra)
 
         return data
@@ -275,92 +252,8 @@ class ConjunctionDataMessage():
             return hash(self) == hash(other)
         return False
 
-
-    def set_value(self, key:str, value:str, object_id:int = None) -> None:
-        """Set/assigns value to a CDM field (key).
-
-        Args:
-            key (str): Field of the CDM to which the value shall be assigned.
-            value (str): Value to be assigned.
-            object_id (int, optional): Object ID of the object for which the 
-            value belongs to (OBJECT1 or OBJECT2). This parameter is only 
-            applicable to keys relative to objects CDM data. Defaults to None.
-
-        Raises:
-            ValueError: Invalid object ID.
-            RuntimeError: Format of the value not matching a datetime string 
-            type.
-        """
-
-        # Get cluster to which the value is set
-        cluster = cluster_from_key(key)
-
-        # Check if data cluster belongs to those concerning objects' data.
-        if not cluster in ['header', 'metadata']:
-
-            # Check if object_id is either 0 or 1. Raise error otherwise.
-            if not object_id in [0, 1]:
-                raise ValueError(f'Invalid object_id ({object_id}) for ' + \
-                                 f'{key}. Expecting object_id to be 0 or 1.')
-
-            # Set values for the key field in the CDM.
-            getattr(self, '_values_object_' + cluster)[key][object_id] = value
-
-        else:
-            
-            # If key is one of the CDM fields with a date.
-            if key in self._keys_with_dates:
-                # We have a field with a date string as the value. Check if the 
-                # string is in the format needed by the CCSDS 508.0-B-1 standard
-                time_format = utils.get_ccsds_time_format(value)
-                idx = time_format.find('DDD')
-                if idx!=-1:
-                    value = utils.doy_2_date(value, value[idx:idx+3], 
-                                            value[0:4], idx)
-                try:
-                    _ = dt.strptime(value, '%Y-%m-%dT%H:%M:%S.%f')
-                except Exception as e:
-                    raise RuntimeError('{} ({}) is not in the expected ' + \
-                                       'format.\n{}'.format(key, value, str(e)))
-
-            getattr(self, '_values_' + cluster)[key] = value
-
-    def get_value(self, key:str, object_id:int = None) -> Union[str, float, int]:
-        """Get value from a CDM field (key).
-
-        Args:
-            key (str): Field of the CDM to be retrieved.
-            object_id (int, optional): Object ID of the object the key belongs 
-            to (OBJECT1 or OBJECT2). This parameter is only applicable to keys 
-            relative to objects CDM data. Defaults to None.
-
-        Raises:
-            ValueError: Invalid object ID.
-
-        Returns:
-            Union[str, float, int]: Value assigned to the CDM key.
-        """
-
-        # Get cluster to which the value is set
-        cluster = cluster_from_key(key)
-
-        # Check if data cluster belongs to those concerning objects' data.
-        if not cluster in ['header', 'metadata']:
-
-            # Check if object_id is either 0 or 1. Raise error otherwise.
-            if not object_id in [0, 1]:
-                raise ValueError(f'Invalid object_id ({object_id}) for ' + \
-                                 f'{key}. Expecting object_id to be 0 or 1.')
-
-            # Return value assigned to the CDM key.
-            return getattr(self, '_values_object_' + cluster)[key][object_id]
-
-        else:
-            # Return value assigned to the CDM key.
-            return getattr(self, '_values_' + cluster)[key]
-
     
-    def set_header(self, key:str, value:str) -> None:
+    def set_header(self, key, value):
         if key in self._keys_header:
             if key in self._keys_with_dates:
                 # We have a field with a date string as the value. Check if the 
@@ -372,7 +265,8 @@ class ConjunctionDataMessage():
                 try:
                     _ = dt.strptime(value, '%Y-%m-%dT%H:%M:%S.%f')
                 except Exception as e:
-                    raise RuntimeError('{} ({}) is not in the expected format.\n{}'.format(key, value, str(e)))
+                    raise RuntimeError('{} ({}) is not in the expected ' + \
+                                       'format.\n{}'.format(key, value, str(e)))
             self._values_header[key] = value
         else:
             raise ValueError('Invalid key ({}) for header'.format(key))
@@ -381,7 +275,7 @@ class ConjunctionDataMessage():
         if key in self._keys_relative_metadata:
             self._values_relative_metadata[key] = value
         else:
-            raise ValueError(f'Invalid key ({key}) for relative metadata')
+            raise ValueError('Invalid key ({}) for relative metadata'.format(key))
 
     def set_object(self, object_id, key, value):
         if object_id != 0 and object_id != 1:
@@ -409,21 +303,21 @@ class ConjunctionDataMessage():
         elif key in self._keys_data_covariance:
             return self._values_object_data_covariance[object_id][key]
         else:
-            raise ValueError(f'Invalid key ({key}) for object data')
+            raise ValueError('Invalid key ({}) for object data'.format(key))
 
     def get_relative_metadata(self, key):
         if key in self._keys_relative_metadata:
             return self._values_relative_metadata[key]
         else:
-            raise ValueError(f'Invalid key ({key}) for relative metadata')
+            raise ValueError('Invalid key ({}) for relative metadata'.format(key))
 
     def set_state(self, object_id, state):
-        self.set_object(object_id, 'X', state[0, 0])
-        self.set_object(object_id, 'Y', state[0, 1])
-        self.set_object(object_id, 'Z', state[0, 2])
-        self.set_object(object_id, 'X_DOT', state[1, 0])
-        self.set_object(object_id, 'Y_DOT', state[1, 1])
-        self.set_object(object_id, 'Z_DOT', state[1, 2])
+
+        # Iterate over states and components
+        for s, state in enumerate(['', '_DOT']):
+            for c, component in enumerate(['X', 'Y', 'Z']):
+                self.set_object(object_id, component + state, state[s, c])
+
         self._update_state_relative()
         self._update_miss_distance()
 
@@ -481,7 +375,7 @@ class ConjunctionDataMessage():
             for state in [0, 1]:
                 for component in [0, 1, 2]:
                     relative_state[state, component] = \
-                        np.dot(rot_matrix[component], relative_state[sate])
+                        np.dot(rot_matrix[component], relative_state[state])
 
             return relative_state
 
@@ -594,7 +488,7 @@ class ConjunctionDataMessage():
                                 f'C{i_rtn}_{j_rtn}',
                                 covariance[i, j])
     @staticmethod
-    def datetime_to_str(input_datetime:datetime) -> str:
+    def datetime_to_str(input_datetime:dt) -> str:
         return input_datetime.strftime('%Y-%m-%dT%H:%M:%S.%f')
 
     def validate(self) -> None:
@@ -717,5 +611,104 @@ class ConjunctionDataMessage():
             self.set_object(1, key, value)
         else:
             raise ValueError('Invalid key: {}'.format(key))
+
+
+#     def set_value(self, key:str, value:str, object_id:int = None) -> None:
+#         """Set/assigns value to a CDM field (key).
+
+#         Args:
+#             key (str): Field of the CDM to which the value shall be assigned.
+#             value (str): Value to be assigned.
+#             object_id (int, optional): Object ID of the object for which the 
+#             value belongs to (OBJECT1 or OBJECT2). This parameter is only 
+#             applicable to keys relative to objects CDM data. Defaults to None.
+
+#         Raises:
+#             ValueError: Invalid object ID.
+#             RuntimeError: Format of the value not matching a datetime string 
+#             type.
+#         """
+
+#         # Get cluster to which the value is set
+#         cluster = cluster_from_key(key)
+
+#         # Check if data cluster belongs to those concerning objects' data.
+#         if not cluster in ['header', 'metadata']:
+
+#             # Check if object_id is either 0 or 1. Raise error otherwise.
+#             if not object_id in [0, 1]:
+#                 raise ValueError(f'Invalid object_id ({object_id}) for ' + \
+#                                  f'{key}. Expecting object_id to be 0 or 1.')
+
+#             # Set values for the key field in the CDM.
+#             getattr(self, '_values_object_' + cluster)[key][object_id] = value
+
+#         else:
+            
+#             # If key is one of the CDM fields with a date.
+#             if key in self._keys_with_dates:
+#                 # We have a field with a date string as the value. Check if the 
+#                 # string is in the format needed by the CCSDS 508.0-B-1 standard
+#                 time_format = utils.get_ccsds_time_format(value)
+#                 idx = time_format.find('DDD')
+#                 if idx!=-1:
+#                     value = utils.doy_2_date(value, value[idx:idx+3], 
+#                                             value[0:4], idx)
+#                 try:
+#                     _ = dt.strptime(value, '%Y-%m-%dT%H:%M:%S.%f')
+#                 except Exception as e:
+#                     raise RuntimeError('{} ({}) is not in the expected ' + \
+#                                        'format.\n{}'.format(key, value, str(e)))
+
+#             getattr(self, '_values_' + cluster)[key] = value
+
+#     def get_value(self, key:str, object_id:int = None) -> Union[str, float, int]:
+#         """Get value from a CDM field (key).
+
+#         Args:
+#             key (str): Field of the CDM to be retrieved.
+#             object_id (int, optional): Object ID of the object the key belongs 
+#             to (OBJECT1 or OBJECT2). This parameter is only applicable to keys 
+#             relative to objects CDM data. Defaults to None.
+
+#         Raises:
+#             ValueError: Invalid object ID.
+
+#         Returns:
+#             Union[str, float, int]: Value assigned to the CDM key.
+#         """
+
+#         # Get cluster to which the value is set
+#         cluster = cluster_from_key(key)
+
+#         # Check if data cluster belongs to those concerning objects' data.
+#         if not cluster in ['header', 'metadata']:
+
+#             # Check if object_id is either 0 or 1. Raise error otherwise.
+#             if not object_id in [0, 1]:
+#                 raise ValueError(f'Invalid object_id ({object_id}) for ' + \
+#                                  f'{key}. Expecting object_id to be 0 or 1.')
+
+#             # Return value assigned to the CDM key.
+#             return getattr(self, '_values_object_' + cluster)[key][object_id]
+
+#         else:
+#             # Return value assigned to the CDM key.
+#             return getattr(self, '_values_' + cluster)[key]
+
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
