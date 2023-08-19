@@ -16,6 +16,7 @@ from .cdm import ConjunctionDataMessage as CDM
 
 mpl.rcParams['axes.unicode_minus'] = False
 
+
 #%% CLASS: EventsPlotting
 class EventsPlotting():
 
@@ -223,9 +224,10 @@ class ConjunctionEvent(EventsPlotting):
             for cdm in self._cdms:
                 cdm_dataframes.append(cdm.to_dataframe())
             self._dataframe = pd.concat(cdm_dataframes, ignore_index=True)
+            
         return self._dataframe
 
-    def plot_feature(self, feature:str, figsize:tuple = (5, 3), 
+    def plot_feature(self, feature:str, figsize:tuple = (6, 3), 
                      ax:plt.Axes = None, return_ax:bool = False, 
                      apply_func = (lambda x: x), filepath:str = None, 
                      legend:bool = False, xlim:tuple = (-0.5,7.5), 
@@ -308,7 +310,7 @@ class ConjunctionEvent(EventsPlotting):
         ax.set_xticks(np.arange(8))
 
         # Plot legend
-        if legend: ax.legend(loc='best')
+        if legend: ax.legend(loc='best', fontsize = 8)
 
         # Save plot if filepath is provided.
         if filepath is not None:
@@ -401,14 +403,14 @@ class ConjunctionEventsDataset(EventsPlotting):
                 event_cdm_filepaths = []
                 for event_prefix in event_prefixes:
                     # Get list of CDM files whose names match the event_prefix.
-                    cdm_filepaths.append(list(filter(lambda f: 
+                    event_cdm_filepaths.append(list(filter(lambda f: 
                                                      f.startswith(event_prefix), 
                                                      filepaths)))
                 # Append event objects from the filepaths.
                 self._events = [ConjunctionEvent(cdm_filepaths=f) \
-                                for f in cdm_filepaths]
+                                for f in event_cdm_filepaths]
                 print('Loaded {} CDMs grouped into {} events' \
-                      .format(len(file_names), len(self._events)))
+                      .format(len(filepaths), len(self._events)))
         else:
             self._events = events
 
@@ -543,7 +545,9 @@ class ConjunctionEventsDataset(EventsPlotting):
         pb_events.refresh(i = e+1, 
             description='Imported as DataFrame.')
         
-        return pd.concat(event_dataframes, ignore_index=True)
+        self._dataframe = pd.concat(event_dataframes, ignore_index=True)
+        
+        return self._dataframe
 
     def dates(self) -> None:
         """Print summary on datetime information about CDM generation and TCA 

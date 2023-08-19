@@ -1,6 +1,6 @@
 # Libraries used for type hinting
 from __future__ import annotations
-from typing import Type, Union
+from typing import Union
 
 import torch
 import pandas as pd

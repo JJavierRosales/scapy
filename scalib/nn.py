@@ -13,10 +13,9 @@ from matplotlib import pyplot as plt
 import warnings
 
 from . import utils
-from .cdm import ConjunctionDataMessage as CDM
 from .event import ConjunctionEvent as CE
 from .event import ConjunctionEventsDataset as CED
-
+from .cdm import ConjunctionDataMessage as CDM
 
 #%% CLASS: LSTMLayer
 class LSTMLayer(nn.Module):
@@ -329,14 +328,22 @@ class DatasetEventDataset(Dataset):
         # is introduced to remove value errors caused by division by zero.
         epsilon = 1e-8
         for i, cdm in enumerate(event):
+
+            # Initialize list to store normalized values for every feature in a
+            # given CDM.
+            norm_values = []
+
             for j, feature in enumerate(self._features):
                 # Get mean and standard deviation per feature.
                 feature_mean = self._features_stats['mean'][j]
                 feature_stddev = self._features_stats['stddev'][j]
                 
-                # Add normalzied feature to the tensor.
-                x[i] = torch.tensor([(cdm[feature]-feature_mean)/\
-                                     (feature_stddev+epsilon)])
+                # Append normalized values from feature to the list.
+                norm_values += [(cdm[feature] - feature_mean)/
+                                (feature_stddev + epsilon)]
+                
+            # Add normalized values from all features to the output tensor.
+            x[i] = torch.tensor(norm_values)
 
         return x, torch.tensor(len(event))
     
@@ -820,13 +827,13 @@ class ConjunctionEventForecaster(nn.Module):
         events = []
 
         # Iterate over all sequences
-        pb_samples = utils.ProgressBar(iterations = range(num_samples),  
-            description='Forecasting event evolution ...')
+        # pb_samples = utils.ProgressBar(iterations = range(num_samples),  
+        #     description='Forecasting event evolution ...')
 
-        for i in pb_samples.iterations:
+        for i in range(num_samples):
 
             # Update progress bar.
-            pb_samples.refresh(i = i+1)
+            # pb_samples.refresh(i = i+1)
 
             # Create a deep copy of the input event to avoid modifying the 
             # original object
@@ -842,7 +849,14 @@ class ConjunctionEventForecaster(nn.Module):
 
                 # Predict new CDM from i_event and append object to i_event.
                 cdm = self.predict(i_event)
+
                 i_event.add(cdm)
+
+                # Check predicted CDM time to TCA is lower than previous CDM.
+                if cdm['__TCA'] >= i_event[-2]['__TCA']: 
+                    i_event = i_event[:-1]
+                    continue
+
 
                 # Stop loop if one of the conditions is met.
                 if (cdm['__CREATION_DATE'] > cdm['__TCA']) or \
@@ -853,7 +867,7 @@ class ConjunctionEventForecaster(nn.Module):
             events.append(i_event)
 
         # Update progress bar.
-        pb_samples.refresh(i = i+1, description = 'Event forecasted.')
+        # pb_samples.refresh(i = i+1, description = 'Event forecasted.')
 
         return events[0] if num_samples==1 \
             else CED(events = events)
