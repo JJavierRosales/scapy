@@ -210,6 +210,7 @@ def get_ccsds_time_format(time_string:str) -> str:
     idx_decimal = time_string.find('.')
 
     # If datetime has seconds decimals, get the number of decimals.
+    n_decimals = 0
     if num_decimal != 0:
         n_decimals = len(time_string) - 1 - idx_decimal - (1 if z_opt else 0)
 
@@ -732,7 +733,7 @@ def tabular_list(input:list, n_cols:int = 3, **kwargs) -> str:
     return output
 #%% CLASS: ProgressBar
 class ProgressBar():
-    def __init__(self, iterations:Union[int,list], description:str=""):
+    def __init__(self, iterations:Union[int,list],title:str="", description:str=""):
 
         # Define list of sectors and range of values they apply to
         self._sectors_list = list(['', '\u258F', '\u258D', '\u258C', '\u258B', 
@@ -747,6 +748,7 @@ class ProgressBar():
             self._n_iterations = len(self.iterations)
         self.description = description
 
+        self._title = ("\n" if title!="" else "") + title
         self._header = None
         self._log = ""
         self._i = 0
@@ -793,7 +795,8 @@ class ProgressBar():
         if i > self._i:
 
             if i==1 and self._header is None:
-                self._header = f"\n| {'Progress':<{19 + 2*om_iterations+1}}" + \
+                self._header = self._title + \
+                    f"\n| {'Progress':<{19 + 2*om_iterations+1}}" + \
                     f" | {'Time':^11} | " + \
                     f"{'Iters/sec':^{max(9, om_iterations+3)}} | " + \
                     f"{'Comments':<}"

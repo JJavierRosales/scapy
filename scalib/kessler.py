@@ -1,18 +1,20 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
 import numpy as np
 import sys
 
+import matplotlib.pyplot as plt
+
 from . import utils as util
-from .cdm import ConjunctionDataMessage
+from .cdm import ConjunctionDataMessage as CDM
 from .event import ConjunctionEventsDataset as EventDataset
 from .nn import DatasetEventDataset
 
 
-
+#%% CLASS: LSTMPredictor
 class LSTMPredictor(nn.Module):
     def __init__(self, lstm_size=256, lstm_depth=2, dropout=0.2, features=None):
         super().__init__()
@@ -218,7 +220,7 @@ class LSTMPredictor(nn.Module):
             output_last = output[-1]
 
         date0 = event[0]['CREATION_DATE']
-        cdm = ConjunctionDataMessage()
+        cdm = CDM()
         for i in range(len(self._features)):
             feature = self._features[i]
             value = self._features_stats['mean'][i] + float(output_last[i].item()) * self._features_stats['stddev'][i]
@@ -247,7 +249,7 @@ class LSTMPredictor(nn.Module):
     def predict_event(self, event, num_samples=1, max_length=22):
         es = []
 
-        pb_samples = utils.ProgressBar(iterations = range(num_samples),
+        pb_samples = util.ProgressBar(iterations = range(num_samples),
             description='Predicting event evolution')
         for i in pb_samples.iterations:
             pb_samples.refresh(i+1)
@@ -297,3 +299,6 @@ class LSTMPredictor(nn.Module):
         x = torch.relu(x)
         x = self.fc1(x)
         return x
+
+
+

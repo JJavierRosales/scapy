@@ -308,9 +308,10 @@ class ConjunctionEvent(EventsPlotting):
         # Adapt X and Y axes ticks for a better plot representation.
         ax.set_yticks(np.linspace(ax.get_ylim()[0],ax.get_ylim()[1],5))
         ax.set_xticks(np.arange(8))
+        ax.invert_xaxis()
 
         # Plot legend
-        if legend: ax.legend(loc='best', fontsize = 8)
+        if legend: ax.legend(fontsize = 8)
 
         # Save plot if filepath is provided.
         if filepath is not None:

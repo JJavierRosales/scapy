@@ -35,9 +35,14 @@ class LSTMLayer(nn.Module):
         """
     
         super(LSTMLayer, self).__init__()
+
+        # Initialize inputs and hidden sizes
+        self.input_size = input_size
+        self.hidden_size = hidden_size
         
         # Initialize cell attribute in class witht the LSTM cell object 
         # initialized.
+        
         self.cell = cell(input_size = input_size, 
                          hidden_size = hidden_size, 
                          **cell_args)
@@ -59,14 +64,16 @@ class LSTMLayer(nn.Module):
                     last hidden state (predicted Xt+1 value) and cell state 
                     (cell context) required to produce the next prediction.
         """
+
+        
     
-        # Remove tensor dimension fron inputs.
+        # Remove tensor dimension from inputs.
         inputs = input.unbind(0)
         outputs = []
-        
+
         # Iterate over all the different time steps of a given sequence (inputs).
         for x_t in inputs:
-            
+
             # Forecast Xt value t+1 (hidden state - ht) and the cell state 
             # holding the cell "configuration parameters" for the next time step.
             out, state = self.cell(x_t, state)
@@ -88,16 +95,16 @@ class LSTM(nn.Module):
     """
     def __init__(self, input_size:int, hidden_size:int, cell, 
         batch_first:bool=True, num_layers:int=1, 
-        dropout_probability:float=None, **cell_args:dict) -> None:
+        dropout:float=None, **cell_args:dict) -> None:
         """Initialize adapted LSTM class.
 
         Args:
             input_size (int): Number of input features.
             hidden_size (int): Number of hidden neurons (outputs of the LSTM).
-            cell (constructor): LSTM cell constructor
+            cell (constructor): LSTM cell constructor.
             num_layers (int, optional): Number of stacked LSTM layers (LSTM 
             depth). Defaults to 1.
-            dropout_probability (float, optional): Dropout probability to use 
+            dropout (float, optional): Dropout probability to use 
             between consecutive LSTM layers. Only applicable if num_layers is 
             greater than 1. Defaults to None.
         """
@@ -114,8 +121,13 @@ class LSTM(nn.Module):
                             hidden_size = hidden_size, 
                             **cell_args) for _ in range(num_layers - 1)]
         
+        # Set network dimensions
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        
         # Set batch_first parameter
         self.batch_first = batch_first
+        self._batched = None
         
         # Convert list of LSTM layers to list of nn.Modules.
         self.layers = nn.ModuleList(layers)
@@ -126,7 +138,7 @@ class LSTM(nn.Module):
 
         # If number of LSTM layers is 1 and the dropout_probability provided is
         # not None, print warning to the user.
-        if num_layers == 1:
+        if num_layers == 1 and dropout > 0:
             warnings.warn(
                 "Dropout parameter in LSTM class adds dropout layers after " 
                 "all but last recurrent layer. It expects num_layers greater "
@@ -134,8 +146,8 @@ class LSTM(nn.Module):
             )
         
         # If dropout_probability is provided initialize Dropout Module. 
-        if not dropout_probability is None:
-            self.dropout_layer = nn.Dropout(p = dropout_probability)
+        if not dropout is None and num_layers > 1:
+            self.dropout_layer = nn.Dropout(p = dropout)
         else:
             self.dropout_layer = None
 
@@ -169,60 +181,83 @@ class LSTM(nn.Module):
                 hidden state (predicted Xt+1 value) and cell state (cell 
                 context) required to produce the next prediction of the layer.
         """
-    
-        # Check the dimensions of the input tensor to know wether it is batched 
-        # or unbatched.
-        if input.dim()==2:
-            self._batched = False
-            # Input tensor is unbatched.
-            seq_length, hidden_size = input.size()
-        else:
+
+        if (self._batched is None) and \
+            (isinstance(input, torch.nn.utils.rnn.PackedSequence) or \
+            (isinstance(input, torch.Tensor) and len(input.size())==3)):
             self._batched = True
+    
+        if self._batched:
             # Input tensor is batched
             if self.batch_first:
-                batch_size, seq_length, hidden_size = input.size()
+                batch_size, seq_length, _ = input.size()
             else:
-                seq_length, batch_size, hidden_size = input.size()
+                seq_length, batch_size, _ = input.size()
+        else:
+            # Input tensor is unbatched.
+            seq_length, _ = input.size()
 
-    
+        
+
         # Initialize list to store a tuple per layer containing the hidden and 
         # cell states required for the next output prediction
         output_hstates = []
         output_cstates = []
-        output = input
+
+        # Initialize input layer tensor (tensor to be passed first to the layer
+        # whose input_size is the input number of features)
+        input_layer = input
 
         for i, layer in enumerate(self.layers):
-        
+
             # Get the hidden states tensor at layer i:
             #  - batched=True -> (num_layers, batch_size, hidden_size)
             #  - batched=False -> (num_layers, hidden_size)
-            state = states[i]
+            #state = states[i]
+            hstate = states[0][i]
+            cstate = states[1][i]
             
             # If inputs are batched, iterate over all batches.
             if self._batched:
 
+                # Initialize output_layer with the dimensions of the outputs 
+                # from the layer.
+                if self.batch_first:
+                    output_layer = torch.zeros((batch_size, 
+                                                seq_length, 
+                                                layer.hidden_size))
+                else:
+                    output_layer = torch.zeros((seq_length,
+                                                batch_size,  
+                                                layer.hidden_size))
+
                 # Initialize tensor to keep the states returned at the end of 
                 # the sequence processing in every batch b.
-                out_hstate = torch.zeros((batch_size, hidden_size))
-                out_cstate = torch.zeros((batch_size, hidden_size))
+                out_hstate = torch.zeros((batch_size, layer.hidden_size))
+                out_cstate = torch.zeros((batch_size, layer.hidden_size))
 
                 # Iterate through all batches- to get the output and states per 
                 # batch.
                 for b in range(batch_size):
+
+                    # Get the batch input tensor b for the layer i depending on 
+                    # the shape of the input tensor.
+                    batch_input = input_layer[b, :, :] if self.batch_first \
+                        else torch.squeeze(input_layer[:, b, :], dim = 1)
                     
-                    # Get the batch input tensor b for the layer i.
-                    batch_input = torch.squeeze(output[b, :, :]) \
-                        if self.batch_first else torch.squeeze(output[:, b, :])
-                    
+                    # Get the batch states for the layer i
+                    batch_state = (torch.squeeze(hstate[b]), 
+                                   torch.squeeze(cstate[b]))
+
                     # Get the output and states of the layer for the batch b
-                    batch_output, batch_state = \
-                            layer(batch_input, torch.squeeze(state[b]))
+                    batch_output, batch_state = layer.forward(batch_input, 
+                                                              batch_state)
 
                     # Save batch output depending on the inputs shape.              
                     if self.batch_first:
-                        output[b, :, :] = batch_output
+                        output_layer[b, :, :] = batch_output
                     else:
-                        output[:, b, :] = batch_output
+                        output_layer[:, b, :] = batch_output
 
                     # Keep last cell state of the sequence for batch b and i 
                     # layer.
@@ -232,11 +267,16 @@ class LSTM(nn.Module):
             else:
 
                 # Keep last cell state of sequence
-                output, (out_hstate, out_cstate) = layer(output, state)
+                output_layer, (out_hstate, out_cstate) = layer(input_layer, 
+                                                               (hstate, cstate))
+
                 
             # Apply the dropout layer except the last layer
             if (i < self.num_layers - 1) and not (self.dropout_layer is None):
-                output = self.dropout_layer(output)
+                output_layer = self.dropout_layer(output_layer)
+
+            # Redefine input_layer tensor from the output of previous layer.
+            input_layer = output_layer
 
             # Add last states from squences (and from all batches if input is 
             # batched) to final list.    
@@ -244,14 +284,14 @@ class LSTM(nn.Module):
             output_cstates += [out_cstate]
 
         # Convert lists to tensors 
-        hstates = torch.as_tensor(output_hstates if self.num_layers > 1 \
-                                else output_hstates[0])
-        cstates = torch.as_tensor(output_cstates if self.num_layers > 1 \
-                                else output_cstates[0])
+        hstates = torch.stack(output_hstates) if self.num_layers > 1 \
+                                else output_hstates[0]
+        cstates = torch.stack(output_cstates) if self.num_layers > 1 \
+                                else output_cstates[0]
+        
         # Return the outputs of the LSTM and the hidden states for every LSTM 
         # layer.
-        return output, (hstates, cstates)
-        
+        return output_layer, (hstates, cstates)
         
         
 #%% CLASS: DatasetEventDataset
@@ -419,6 +459,7 @@ class ConjunctionEventForecaster(nn.Module):
                         'OBJECT2_CNDOT_NDOT']
 
         self.input_size = len(features)
+        self._batched = None
 
         # Set model using the modules parameter
         self.model = layers
@@ -442,20 +483,38 @@ class ConjunctionEventForecaster(nn.Module):
             log_scale (bool, optional): Flag to plot Loss using logarithmic 
             scale. Defaults to False.
         """
+
+        # Apply logarithmic transformation if log_scale is set to True. This 
+        # helps to see the evolution when variations between iterations are 
+        # small.
         train_loss = np.log(self._hist_train_loss) if log_scale \
                      else self._hist_train_loss
         valid_loss = np.log(self._hist_valid_loss) if log_scale \
                      else self._hist_valid_loss
+        
+        # Initialize plot object.
         fig, ax = plt.subplots(figsize = figsize)
+
+        # Plot training loss vs iterations.
         ax.plot(self._hist_train_loss_iters, train_loss, 
                 label='Training', color='tab:orange')
+        
+        # Plot validation loss vs iterations.
         ax.plot(self._hist_valid_loss_iters, valid_loss, 
                 label='Validation', color='tab:blue')
-        ax.set_xlim(0, max(self._hist_valid_loss_iters))
+        
+        # Set X-axis limits.
+        ax.set_xlim(0, max(self._hist_train_loss_iters))
+
+        # Set axes labels.
         ax.set_xlabel('Number of iterations')
         ax.set_ylabel('MSE Loss')
+
+        # Set legend and grid for better visualization.
         ax.legend(fontsize=8)
         ax.grid(True, linestyle='--')
+
+        # Save figure if filepath is provided.
         if filepath is not None:
             print('Plotting to file: {}'.format(filepath))
             plt.savefig(filepath)
@@ -482,7 +541,9 @@ class ConjunctionEventForecaster(nn.Module):
             event_samples_for_stats (int, optional): Number of events considered 
             to compute the mean and standard deviation used for normalization. 
             Defaults to 250.
-            filename_prefix (str, optional): _description_. Defaults to None.
+            filename_prefix (str, optional): Prefix of the training check point 
+            (model saved at the end of every epoch). If None, no checkpoint is 
+            created. Defaults to None.
 
         Raises:
             ValueError: valid_proportion is not in the range (0, 1).
@@ -571,9 +632,10 @@ class ConjunctionEventForecaster(nn.Module):
         else:
             total_iters = self._hist_train_loss_iters[-1]
 
-        # pb_epochs = utils.ProgressBar(iterations=range(epochs), 
-        #     description = 'Training Feature Forecaster model...')
-        print('\nTraining forecasting model...', end='\n')
+        # Initialize progress bar to show training progress.
+        n_batches = len(train_loader)
+        pb_epochs = utils.ProgressBar(iterations=range(epochs*n_batches),
+                                      title = 'FORECASTING MODEL TRAINING:')
 
         for epoch in range(epochs):
             with torch.no_grad():
@@ -617,6 +679,7 @@ class ConjunctionEventForecaster(nn.Module):
             # turn may contain a different number of CDM objects.
             for i_minibatch, (events, event_lengths) in enumerate(train_loader):
                 total_iters += 1
+                relative_iters = (epoch*n_batches + i_minibatch + 1)
 
                 # Allocate events and event_lengths tensors to the device 
                 # defined by the model.
@@ -658,28 +721,29 @@ class ConjunctionEventForecaster(nn.Module):
                 optimizer.step()
 
                 # Convert loss from the training dataset to numpy and store it.
-                
                 self._hist_train_loss_iters.append(total_iters)
 
-                description = f'Iterations: {total_iters} | ' + \
-                    f'Minibatch {i_minibatch+1}/{len(train_loader)} | ' + \
-                    f'Train loss = {train_loss:6.4e} | ' + \
-                    f'Validation loss = {valid_loss:6.4e}'
+                # Update progress bar.
+                description = f'Minibatch {i_minibatch+1}/{n_batches} | ' + \
+                    f'Loss -> Train = {train_loss:6.4e} : ' + \
+                    f'Valid = {valid_loss:6.4e}'
 
-                print(description, end='\r')
-
-                # pb_epochs.refresh(i = epoch+1, description = description, 
-                #     nested_progress = True)
-
-
-            if epoch == epochs-1: print(description, end='\n')
-
+                pb_epochs.refresh(i = relative_iters, 
+                                  description = description,
+                                  nested_progress = True)
+                
+            # If filename_prefix is provided, save check point at the end of the
+            # epoch.
             if filename_prefix is not None:
                 filename = filename_prefix + '_epoch_{}'.format(epoch+1)
-                description = f'Saving model checkpoint to file {filename}'
-                # pb_epochs.refresh(i = epoch, description = description, 
-                #     nested_progress = True)
+                pb_epochs.refresh(i = relative_iters, 
+                                  description = f'Saving model checkpoint' + \
+                                                f' to file: {filename} ...',
+                                  nested_progress = True)
                 self.save(filename)
+
+        # Print message at the end of the mini batch.
+        pb_epochs.refresh(i = relative_iters, description = description)
 
     @staticmethod      
     def _get_lr(optimizer) -> float:
@@ -718,7 +782,9 @@ class ConjunctionEventForecaster(nn.Module):
         # batch_size = 1.
         self.reset(1)
 
-        # Forecast next CDM content
+        # Forecast next CDM content. Use unsqueeze function to add one extra 
+        # dimension to the tensor to simulate batch_size=1; from shape 
+        # (seq_length, n_features) to (1, seq_length, n_features).
         output = self.forward(inputs.unsqueeze(0), 
                               inputs_length.unsqueeze(0)).squeeze()
 
@@ -921,7 +987,7 @@ class ConjunctionEventForecaster(nn.Module):
 
         # Iterate over all modules to perform the forward operation.
         for module_name, module in self.model.items():
-        
+            
             if 'lstm' in module_name:
 
                 # Get size of inputs tensor.
@@ -939,17 +1005,17 @@ class ConjunctionEventForecaster(nn.Module):
                 # and other contains the the batch size at each step. 
 
                 # Pack Tensor containing padded sequences of variable length.
-                x = pack_padded_sequence(input = x, 
-                                         lengths = x_lengths, 
-                                         batch_first = module.batch_first, 
-                                         enforce_sorted = False)
-
+                # x = pack_padded_sequence(input = x, 
+                #                          lengths = x_lengths, 
+                #                          batch_first = module.batch_first, 
+                #                          enforce_sorted = False)
+                
                 x, self.hidden[module_name] = module(x, self.hidden[module_name])
 
-                # Pads a packed batch of variable length sequences from LSTM layer.
-                x, _ = pad_packed_sequence(sequence = x, 
-                                           batch_first = module.batch_first, 
-                                           total_length = x_length_max)
+                # # Pads a packed batch of variable length sequences from LSTM layer.
+                # x, _ = pad_packed_sequence(sequence = x, 
+                #                            batch_first = module.batch_first, 
+                #                            total_length = x_length_max)
             else:
                 x = module(x)
             
