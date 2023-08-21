@@ -17,6 +17,139 @@ from .event import ConjunctionEvent as CE
 from .event import ConjunctionEventsDataset as CED
 from .cdm import ConjunctionDataMessage as CDM
 
+#%% CLASS: SelfAttentionLayer
+# Self-Attention Mechanism
+# The self-attention mechanism calculates attention weights by comparing the 
+# similarities between all pairs of time steps in the sequence. Let’s denote the 
+# encoded hidden states as H = [H1, H2, …, H_T]. Given an encoded hidden state Hi 
+# and the previous decoder hidden state (prev_dec_hidden = Hd_T-1), the attention 
+# mechanism calculates a score for each encoded hidden state:
+
+# Score(t) = V * tanh(W1 * HT + W2 * prev_dec_hidden)
+
+# Here, W1 and W2 are learnable weight matrices, and V is a learnable vector. 
+# The tanh function applies non-linearity to the weighted sum of the encoded 
+# hidden state and the previous decoder hidden state.
+
+# The scores are then passed through a softmax function to obtain attention 
+# weights (alpha1, alpha2, …, alphaT). The softmax function ensures that the 
+# attention weights sum up to 1, making them interpretable as probabilities. The 
+# softmax function is defined as:
+
+# softmax(x) = exp(x) / sum(exp(x))   ->    alpha_T = softmax(Score_T)
+
+# Where x represents the input vector.
+
+# The context vector (context) is computed by taking the weighted sum of 
+# the encoded hidden states:
+
+# context = alpha1 * H1 + alpha2 * H2 + … + alpha_T * H_T
+
+# The context vector represents the attended representation of the input 
+# sequence, highlighting the relevant information for making 
+# predictions. By utilizing self-attention, the model can efficiently 
+# capture dependencies between different time steps, allowing for more 
+# accurate forecasts by considering the relevant information across the 
+# entire sequence.
+
+class SelfAttentionLayer(nn.Module):
+    def __init__(self, encoder:nn.Module, decoder:nn.Module) -> None:
+
+        super(SelfAttentionLayer, self).__init__()
+
+        # Initialize input and output sizes
+        self.input_size = encoder.output_size
+        self.output_size = decoder.input_size
+
+        self.batch_first = encoder.batch_first
+        self._batched = None
+
+        # Initialize activation functions
+        self._softmax = nn.Softmax()
+        self._tanh = nn.Tanh()
+
+        # Initialize learnable weight vector to process the encoder hidden state 
+        # at time t (current time step).
+        self.w_encoder = nn.Linear(in_features = encoder.output_size, 
+                                 out_features = decoder.input_size, 
+                                 bias = False)
+        
+        # Initialize learnable weight vector to process the decoder's hidden 
+        # state at time t-1 (previous time step).
+        self.w_decoder = nn.Linear(in_features = decoder.input_size, 
+                                   out_features = decoder.input_size, 
+                                   bias = False)
+        
+        # Initialize learnable value vector
+        self.value = nn.Parameter(data = torch.Tensor(1), requires_grad = True)
+
+    def batch_forward(self, outputs_encoder:torch.Tensor, 
+                      inputs_decoder:torch.Tensor) -> torch.Tensor:
+
+        # Compute attention scores.
+        attn_scores = self.value * self._tanh(self.w_encoder(outputs_encoder) + 
+                                              self.w_decoder(inputs_decoder))
+
+        # Get the attention weights.
+        attn_weights = self._softmax(attn_scores)
+
+        # Apply attention weights to encoder hidden states (encoder outputs). 
+        # This will become the inputs to the decoder.
+        context_vector = attn_weights * outputs_encoder
+
+        return context_vector
+
+    def forward(self, outputs_encoder:torch.Tensor, 
+                inputs_decoder:torch.Tensor) -> torch.Tensor:
+
+
+        if self._batched is None:
+            self._batched = (len(outputs_encoder.size())==3)
+
+        if self._batched:
+            # Input tensor is batched
+            batch_size = input.size(0 if self.batch_first else 1)
+
+        
+        # If inputs are batched, iterate over all batches.
+        if self._batched:
+
+            # Initialize output_layer with the dimensions of the outputs 
+            # from the layer.
+            output = torch.zeros_like(outputs_encoder)
+
+
+            # Iterate through all batches- to get the output and states per 
+            # batch.
+            for b in range(batch_size):
+
+                # Get the batch input tensor b for the layer i depending on 
+                # the shape of the input tensor.
+
+                if self.batch_first:
+                    batch_outputs_encoder = outputs_encoder[b, :, :] 
+                    batch_inputs_decoder = inputs_decoder[b, :, :] 
+                else:
+                    batch_outputs_encoder = outputs_encoder[:, b, :].squeeze(1)
+                    batch_inputs_decoder = inputs_decoder[:, b, :].squeeze(1)
+                
+
+                # Get the output and states of the layer for the batch b
+                batch_output = self.batch_forward(batch_outputs_encoder, 
+                                                  batch_inputs_decoder)
+
+                # Save batch output depending on the inputs shape.              
+                if self.batch_first:
+                    output[b, :, :] = batch_output
+                else:
+                    output[:, b, :] = batch_output
+
+        else:
+
+            # Keep last cell state of sequence
+            output = self.batch_forward(outputs_encoder, inputs_decoder)
+
+        return output
 #%% CLASS: LSTMLayer
 class LSTMLayer(nn.Module):
     """Layer constructor for LSTM based RNN architecture.
@@ -1016,6 +1149,24 @@ class ConjunctionEventForecaster(nn.Module):
                 # x, _ = pad_packed_sequence(sequence = x, 
                 #                            batch_first = module.batch_first, 
                 #                            total_length = x_length_max)
+            elif 'attention' in module_name: 
+
+                # If it is a self-attention layer use the encoder outputs and 
+                # decoder inputs to get the attended representation of the input 
+                # sequence
+
+                # Check if hidden states from encoder are given as a tupple 
+                # (LSTM) or as a torch (GRU)
+                if isinstance(self.hidden['lstm_encoder'], tuple):
+                    outputs_encoder = self.hidden['lstm_encoder'][0]
+                    inputs_decoder  = self.hidden['lstm_decoder'][0]
+                else:
+                    outputs_encoder = self.hidden['lstm_encoder']
+                    inputs_decoder  = self.hidden['lstm_decoder']
+
+                x = module(outputs_encoder = outputs_encoder,
+                           inputs_decoder = inputs_decoder)
+                
             else:
                 x = module(x)
             
