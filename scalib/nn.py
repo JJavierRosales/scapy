@@ -18,6 +18,9 @@ from .event import ConjunctionEventsDataset as CED
 from .cdm import ConjunctionDataMessage as CDM
 
 #%% CLASS: SelfAttentionLayer
+# Link: https://www.analyticsvidhya.com/blog/2023/06/time-series-forecasting-using-attention-mechanism/
+# https://stats.stackexchange.com/questions/421935/what-exactly-are-keys-queries-and-values-in-attention-mechanisms
+
 # Self-Attention Mechanism
 # The self-attention mechanism calculates attention weights by comparing the 
 # similarities between all pairs of time steps in the sequence. Let’s denote the 
@@ -58,7 +61,7 @@ class SelfAttentionLayer(nn.Module):
         super(SelfAttentionLayer, self).__init__()
 
         # Initialize input and output sizes
-        self.input_size = encoder.output_size
+        self.input_size = encoder.hidden_size
         self.output_size = decoder.input_size
 
         self.batch_first = encoder.batch_first
@@ -70,14 +73,14 @@ class SelfAttentionLayer(nn.Module):
 
         # Initialize learnable weight vector to process the encoder hidden state 
         # at time t (current time step).
-        self.w_encoder = nn.Linear(in_features = encoder.output_size, 
-                                 out_features = decoder.input_size, 
+        self.w_encoder = nn.Linear(in_features = self.input_size, 
+                                 out_features = self.output_size, 
                                  bias = False)
         
         # Initialize learnable weight vector to process the decoder's hidden 
         # state at time t-1 (previous time step).
-        self.w_decoder = nn.Linear(in_features = decoder.input_size, 
-                                   out_features = decoder.input_size, 
+        self.w_decoder = nn.Linear(in_features = self.output_size, 
+                                   out_features = self.output_size, 
                                    bias = False)
         
         # Initialize learnable value vector
@@ -693,7 +696,7 @@ class ConjunctionEventForecaster(nn.Module):
 
         # Get number of parameters in the model.
         num_params = sum(p.numel() for p in self.parameters())
-        print('LSTM predictor with params: {:,}'.format(num_params))
+        print(f'Number of learnable parameters of the model: {num_params:,}')
 
         # Ensure number of events considered to compute statistics measures
         # (mean and standard deviation) is lower or equal to the total number 
@@ -1142,7 +1145,7 @@ class ConjunctionEventForecaster(nn.Module):
                 #                          lengths = x_lengths, 
                 #                          batch_first = module.batch_first, 
                 #                          enforce_sorted = False)
-                
+
                 x, self.hidden[module_name] = module(x, self.hidden[module_name])
 
                 # # Pads a packed batch of variable length sequences from LSTM layer.

@@ -385,7 +385,7 @@ def nbins(data:np.ndarray, rule:str = 'fd') -> dict:
 
     # Get the number of items within the dataset
     isinteger = isinstance(data[0], np.integer)
-    data = data.astype(np.float64)
+    data = data.astype(float)
     n = len(data)
     
     # Compute the histogram bins size (range)
@@ -415,7 +415,7 @@ def om(value: float) -> int:
     Returns:
         int: Order of magnitude.
     """
-    if not (isinstance(value, np.float) or \
+    if not (isinstance(value, float) or \
             isinstance(value, np.integer) or \
             isinstance(value, int)): 
         return np.nan
@@ -497,7 +497,7 @@ def number2latex(value) -> str:
 
     # Check input is a number
     if not (isinstance(value, np.integer) or \
-            isinstance(value, np.float)): return output
+            isinstance(value, float)): return output
     if not np.isfinite(value): return output
 
     if (value%1==0 or isinstance(value, np.integer)) and om(value)<=5:
@@ -809,7 +809,11 @@ class ProgressBar():
             self._it_duration = time.time() - self._it_start_time \
                                if self._i > 1 else 0.0
             self.avg_it_duration = (time.time() - self._start_time)/self._i
-            self._its_per_second = 1.0/self.avg_it_duration
+
+            if self.avg_it_duration > 0:
+                self._its_per_second = 1.0/self.avg_it_duration
+            else:
+                self.avg_it_duration = self._n_iterations
             
             # Compute estimated time remaining and overall duration.
             self.ert = self.avg_it_duration * \

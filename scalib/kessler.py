@@ -163,6 +163,8 @@ class LSTMPredictor(nn.Module):
             total_iters = 0
         else:
             total_iters = self._hist_train_loss_iters[-1]
+
+        print(f'\nTraining forecasting model ...', end='\r')
         for epoch in range(epochs):
             with torch.no_grad():
                 for _, (events, event_lengths) in enumerate(valid_loader):
@@ -196,7 +198,12 @@ class LSTMPredictor(nn.Module):
                 self._hist_train_loss_iters.append(total_iters)
                 self._hist_train_loss.append(train_loss)
 
-                print('iter {} | minibatch {}/{} | epoch {}/{} | train loss {:.4e} | valid loss {:.4e} | out size {} | in size {}'.format(total_iters, i_minibatch+1, len(train_loader), epoch+1, epochs, train_loss, valid_loss, output.size(), input.size()), end='\r')
+                print(f'Iter {total_iters} | '
+                      f'Minibatch {i_minibatch+1}/{len(train_loader)} | '
+                      f'Epoch {epoch+1}/{epochs} | '
+                      f'Train loss {train_loss:.4e} | '
+                      f'Valid loss {valid_loss:.4e} |', end='\r')
+                
                 sys.stdout.flush()
 
             if file_name_prefix is not None:
