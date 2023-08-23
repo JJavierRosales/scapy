@@ -375,7 +375,7 @@ class LSTM_NXG(nn.Module):
             setattr(self,'gate_{}_x'.format(gate),
                 nn.Linear(in_features = self.input_size, 
                           out_features = self.hidden_size, 
-                          bias = False))
+                          bias = True))
             
             # Initialize gate weights (Whg) that will process hidden states at 
             # time t-1, including bias associated to the gate.
@@ -477,7 +477,7 @@ class LSTM_NXGAF(nn.Module):
             setattr(self,'gate_{}_x'.format(gate),
                 nn.Linear(in_features = self.input_size, 
                           out_features = self.hidden_size, 
-                          bias = False))
+                          bias = True))
             
             # Initialize gate weights (Whg) that will process hidden states at 
             # time t-1, including bias associated to the gate.
