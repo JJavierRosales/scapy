@@ -68,7 +68,6 @@ class SelfAttentionLayer(nn.Module):
         self._batched = None
 
         # Initialize activation functions
-        self._softmax = nn.Softmax()
         self._tanh = nn.Tanh()
 
         # Initialize learnable weight vector to process the encoder hidden state 
@@ -110,8 +109,11 @@ class SelfAttentionLayer(nn.Module):
             self._batched = (len(outputs_encoder.size())==3)
 
         if self._batched:
+            self._softmax = nn.Softmax(dim=1)
             # Input tensor is batched
             batch_size = input.size(0 if self.batch_first else 1)
+        else:
+            self._softmax = nn.Softmax(dim=0)
 
         
         # If inputs are batched, iterate over all batches.
@@ -313,9 +315,16 @@ class LSTM(nn.Module):
                 (seq_length, batch_size, hidden_size) for batched input if 
                 batch_first = False. It contains the forecasted values of X for 
                 the next time step (ht ~ Xt+1).
-                - states (tuple): Tuple with two tensors: one with the last 
-                hidden state (predicted Xt+1 value) and cell state (cell 
-                context) required to produce the next prediction of the layer.
+                - states (tuple): Tuple with two tensors with shape: 
+                    + output: Tensor with shape (num_layers, hidden_size) for 
+                    unbatched input or (num_layers, batch_size, hidden_size) for
+                    batched output. It contains the last hidden state 
+                    (predicted Xt+1 value) 
+                    + (h_t, c_t): Tensors with shape (num_layers, hidden_size) 
+                    for unbatched input or (num_layers, batch_size, hidden_size) 
+                    for batched output. It contains the cell states (cell 
+                    context) required to produce the next prediction of the 
+                    layer.
         """
 
         if (self._batched is None) and \
@@ -349,9 +358,9 @@ class LSTM(nn.Module):
             # Get the hidden states tensor at layer i:
             #  - batched=True -> (num_layers, batch_size, hidden_size)
             #  - batched=False -> (num_layers, hidden_size)
-            #state = states[i]
-            hstate = states[0][i]
-            cstate = states[1][i]
+
+            hstate = states[0][i] if self.num_layers > 1 else states[0]
+            cstate = states[1][i] if self.num_layers > 1 else states[1]
             
             # If inputs are batched, iterate over all batches.
             if self._batched:
@@ -1097,14 +1106,14 @@ class ConjunctionEventForecaster(nn.Module):
 
         for module_name, module in self.model.items():
             if not 'lstm' in module_name: continue
-            
             h = torch.zeros(module.num_layers, batch_size, module.hidden_size)
             c = torch.zeros(module.num_layers, batch_size, module.hidden_size)
 
             h = h.to(self._device)
             c = c.to(self._device)
+            
+            self.hidden[module_name] = (h.squeeze(0), c.squeeze(0))
 
-            self.hidden[module_name] = (h, c)
 
     def forward(self, x:torch.Tensor, x_lengths:torch.IntTensor) -> torch.Tensor:
         """Predict new CDM containing normalized values.
@@ -1161,6 +1170,8 @@ class ConjunctionEventForecaster(nn.Module):
                 # Check if hidden states from encoder are given as a tupple 
                 # (LSTM) or as a torch (GRU)
                 if isinstance(self.hidden['lstm_encoder'], tuple):
+
+                    print(self.hidden['lstm_encoder'][0].size())
                     outputs_encoder = self.hidden['lstm_encoder'][0]
                     inputs_decoder  = self.hidden['lstm_decoder'][0]
                 else:
@@ -1169,6 +1180,7 @@ class ConjunctionEventForecaster(nn.Module):
 
                 x = module(outputs_encoder = outputs_encoder,
                            inputs_decoder = inputs_decoder)
+                print(f'Attention layer output size {x.size()}')
                 
             else:
                 x = module(x)
