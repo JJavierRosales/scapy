@@ -16,9 +16,9 @@ class BiasLayer(nn.Module):
     A learnable bias layer for gates with no weight parameters in LSTM cell 
     architectures.
     """
-    def __init__(self) -> None:
+    def __init__(self, input_size:int) -> None:
         super().__init__()
-        bias_value = torch.randn((1))
+        bias_value = torch.randn((input_size))
         self.bias_layer = torch.nn.Parameter(bias_value)
     
     def forward(self, x:torch.TensorFloat) -> torch.TensorFloat:
@@ -238,7 +238,8 @@ class LSTM_SLIMX(nn.Module):
                                   
                     # Initialize gate bias (bg) that will process hidden states 
                     # at t-1.
-                    setattr(self, 'gate_{}_h'.format(gate), BiasLayer())
+                    setattr(self, 'gate_{}_h'.format(gate), 
+                            BiasLayer(self.hidden_size))
                 
 
     def _forward_gate(self, gate:str, x:torch.TensorFloat, h:torch.TensorFloat, 
