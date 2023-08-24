@@ -298,9 +298,9 @@ class LSTMPredictor(nn.Module):
 
     def forward(self, x, x_lengths):
         batch_size, x_length_max, _ = x.size()
-        x = torch.nn.utils.rnn.pack_padded_sequence(x, x_lengths, batch_first=True, enforce_sorted=False)
+        # x = torch.nn.utils.rnn.pack_padded_sequence(x, x_lengths, batch_first=True, enforce_sorted=False)
         x, self.hidden = self.lstm(x, self.hidden)
-        x, _ = torch.nn.utils.rnn.pad_packed_sequence(x, batch_first=True, total_length=x_length_max)
+        # x, _ = torch.nn.utils.rnn.pad_packed_sequence(x, batch_first=True, total_length=x_length_max)
         if self.dropout:
             x = self.dropout1(x)
         x = torch.relu(x)

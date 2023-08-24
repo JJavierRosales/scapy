@@ -17,6 +17,24 @@ from .event import ConjunctionEvent as CE
 from .event import ConjunctionEventsDataset as CED
 from .cdm import ConjunctionDataMessage as CDM
 
+
+#%%CLASS: CosineWarmupScheduler
+class CosineWarmupScheduler(optim.lr_scheduler._LRScheduler):
+
+    def __init__(self, optimizer, warmup, max_iters):
+        self.warmup = warmup
+        self.max_num_iters = max_iters
+        super().__init__(optimizer)
+
+    def get_lr(self):
+        lr_factor = self.get_lr_factor(epoch=self.last_epoch)
+        return [base_lr * lr_factor for base_lr in self.base_lrs]
+
+    def get_lr_factor(self, epoch):
+        lr_factor = 0.5 * (1 + np.cos(np.pi * epoch / self.max_num_iters))
+        if epoch <= self.warmup:
+            lr_factor *= epoch * 1.0 / self.warmup
+        return lr_factor
 #%% CLASS: SelfAttentionLayer
 # Link: https://www.analyticsvidhya.com/blog/2023/06/time-series-forecasting-using-attention-mechanism/
 # https://stats.stackexchange.com/questions/421935/what-exactly-are-keys-queries-and-values-in-attention-mechanisms
@@ -56,105 +74,25 @@ from .cdm import ConjunctionDataMessage as CDM
 # entire sequence.
 
 class SelfAttentionLayer(nn.Module):
-    def __init__(self, encoder:nn.Module, decoder:nn.Module) -> None:
+    def __init__(self, input_size:int, batch_first:bool=True, 
+                 num_heads:int=1) -> None:
 
         super(SelfAttentionLayer, self).__init__()
 
         # Initialize input and output sizes
-        self.input_size = encoder.hidden_size
-        self.output_size = decoder.input_size
+        self.input_size = input_size
+        self.attention = nn.MultiheadAttention(embed_dim = input_size, 
+                                               num_heads = num_heads,
+                                               batch_first = batch_first)
 
-        self.batch_first = encoder.batch_first
-        self._batched = None
+    def forward(self, x:torch.Tensor) -> torch.Tensor:
 
-        # Initialize activation functions
-        self._tanh = nn.Tanh()
+        attn_output = self.attention(query = x, 
+                                     key = x, 
+                                     value = x, 
+                                     need_weights = False)
 
-        # Initialize learnable weight vector to process the encoder hidden state 
-        # at time t (current time step).
-        self.w_encoder = nn.Linear(in_features = self.input_size, 
-                                 out_features = self.output_size, 
-                                 bias = False)
-        
-        # Initialize learnable weight vector to process the decoder's hidden 
-        # state at time t-1 (previous time step).
-        self.w_decoder = nn.Linear(in_features = self.output_size, 
-                                   out_features = self.output_size, 
-                                   bias = False)
-        
-        # Initialize learnable value vector
-        self.value = nn.Parameter(data = torch.Tensor(1), requires_grad = True)
-
-    def batch_forward(self, outputs_encoder:torch.Tensor, 
-                      inputs_decoder:torch.Tensor) -> torch.Tensor:
-
-        # Compute attention scores.
-        attn_scores = self.value * self._tanh(self.w_encoder(outputs_encoder) + 
-                                              self.w_decoder(inputs_decoder))
-
-        # Get the attention weights.
-        attn_weights = self._softmax(attn_scores)
-
-        # Apply attention weights to encoder hidden states (encoder outputs). 
-        # This will become the inputs to the decoder.
-        context_vector = attn_weights * outputs_encoder
-
-        return context_vector
-
-    def forward(self, outputs_encoder:torch.Tensor, 
-                inputs_decoder:torch.Tensor) -> torch.Tensor:
-
-
-        if self._batched is None:
-            self._batched = (len(outputs_encoder.size())==3)
-
-        if self._batched:
-            self._softmax = nn.Softmax(dim=1)
-            # Input tensor is batched
-            batch_size = input.size(0 if self.batch_first else 1)
-        else:
-            self._softmax = nn.Softmax(dim=0)
-
-        
-        # If inputs are batched, iterate over all batches.
-        if self._batched:
-
-            # Initialize output_layer with the dimensions of the outputs 
-            # from the layer.
-            output = torch.zeros_like(outputs_encoder)
-
-
-            # Iterate through all batches- to get the output and states per 
-            # batch.
-            for b in range(batch_size):
-
-                # Get the batch input tensor b for the layer i depending on 
-                # the shape of the input tensor.
-
-                if self.batch_first:
-                    batch_outputs_encoder = outputs_encoder[b, :, :] 
-                    batch_inputs_decoder = inputs_decoder[b, :, :] 
-                else:
-                    batch_outputs_encoder = outputs_encoder[:, b, :].squeeze(1)
-                    batch_inputs_decoder = inputs_decoder[:, b, :].squeeze(1)
-                
-
-                # Get the output and states of the layer for the batch b
-                batch_output = self.batch_forward(batch_outputs_encoder, 
-                                                  batch_inputs_decoder)
-
-                # Save batch output depending on the inputs shape.              
-                if self.batch_first:
-                    output[b, :, :] = batch_output
-                else:
-                    output[:, b, :] = batch_output
-
-        else:
-
-            # Keep last cell state of sequence
-            output = self.batch_forward(outputs_encoder, inputs_decoder)
-
-        return output
+        return attn_output[0]
 #%% CLASS: LSTMLayer
 class LSTMLayer(nn.Module):
     """Layer constructor for LSTM based RNN architecture.
@@ -233,7 +171,7 @@ class LSTM(nn.Module):
     """
     def __init__(self, input_size:int, hidden_size:int, cell, 
         batch_first:bool=True, num_layers:int=1, 
-        dropout:float=None, **cell_args:dict) -> None:
+        dropout:float=0.0, **cell_args:dict) -> None:
         """Initialize adapted LSTM class.
 
         Args:
@@ -284,7 +222,7 @@ class LSTM(nn.Module):
             )
         
         # If dropout_probability is provided initialize Dropout Module. 
-        if not dropout is None and num_layers > 1:
+        if dropout > 0 and num_layers > 1:
             self.dropout_layer = nn.Dropout(p = dropout)
         else:
             self.dropout_layer = None
@@ -611,10 +549,14 @@ class ConjunctionEventForecaster(nn.Module):
 
         self._features = features
         self._features_stats = None
-        self._hist_train_loss = []
-        self._hist_train_loss_iters = []
-        self._hist_valid_loss = []
-        self._hist_valid_loss_iters = []
+
+        self._learn_results = {'total_iterations':[],
+                               'validation_loss':[],
+                               'training_loss':[],
+                               'epoch':[],
+                               'learning_rate':[],
+                               'batch_size':[]}
+
 
     def plot_loss(self, filepath:str = None, figsize:tuple = (6, 3), 
                   log_scale:bool = False) -> None:
@@ -632,24 +574,25 @@ class ConjunctionEventForecaster(nn.Module):
         # Apply logarithmic transformation if log_scale is set to True. This 
         # helps to see the evolution when variations between iterations are 
         # small.
-        train_loss = np.log(self._hist_train_loss) if log_scale \
-                     else self._hist_train_loss
-        valid_loss = np.log(self._hist_valid_loss) if log_scale \
-                     else self._hist_valid_loss
+        train_loss = self._learn_results['training_loss']
+        train_loss = np.log(train_loss) if log_scale else train_loss
+
+        valid_loss = self._learn_results['validation_loss']
+        valid_loss = np.log(valid_loss) if log_scale else valid_loss
         
         # Initialize plot object.
         fig, ax = plt.subplots(figsize = figsize)
 
         # Plot training loss vs iterations.
-        ax.plot(self._hist_train_loss_iters, train_loss, 
+        ax.plot(self._learn_results['total_iterations'], train_loss, 
                 label='Training', color='tab:orange')
         
         # Plot validation loss vs iterations.
-        ax.plot(self._hist_valid_loss_iters, valid_loss, 
+        ax.plot(self._learn_results['total_iterations'], valid_loss, 
                 label='Validation', color='tab:blue')
         
         # Set X-axis limits.
-        ax.set_xlim(0, max(self._hist_train_loss_iters))
+        ax.set_xlim(0, self._learn_results['total_iterations'][-1])
 
         # Set axes labels.
         ax.set_xlabel('Number of iterations')
@@ -667,7 +610,7 @@ class ConjunctionEventForecaster(nn.Module):
     def learn(self, event_set:list, epochs:int = 2, lr:float = 1e-3, 
               batch_size:int = 8, device:str = None, 
               valid_proportion:float = 0.15, num_workers:int = 4, 
-              event_samples_for_stats:int = 250, filename_prefix:str = None, 
+              event_samples_for_stats:int = 250, checkpoint_filepath:str = None, 
               **kwargs) -> None:
         """Train RNN model.
 
@@ -686,9 +629,9 @@ class ConjunctionEventForecaster(nn.Module):
             event_samples_for_stats (int, optional): Number of events considered 
             to compute the mean and standard deviation used for normalization. 
             Defaults to 250.
-            filename_prefix (str, optional): Prefix of the training check point 
-            (model saved at the end of every epoch). If None, no checkpoint is 
-            created. Defaults to None.
+            checkpoint_filepath (str, optional): Filepath for the model 
+            checkpoint  (model saved at the end of training). If None, no 
+            checkpoint is created. Defaults to None.
 
         Raises:
             ValueError: valid_proportion is not in the range (0, 1).
@@ -763,6 +706,7 @@ class ConjunctionEventForecaster(nn.Module):
 
         # Set-up optimizer and criterion.
         optimizer = optim.Adam(self.parameters(), lr = lr)
+        
         criterion = nn.MSELoss()
 
         # Set training mode ON to inform layers such as Dropout and BatchNorm, 
@@ -772,19 +716,23 @@ class ConjunctionEventForecaster(nn.Module):
         # are frozen.
         self.train()
         
-        if len(self._hist_train_loss_iters) == 0:
+        if len(self._learn_results['total_iterations']) == 0:
             total_iters = 0
+            last_epoch = 0
         else:
-            total_iters = self._hist_train_loss_iters[-1]
+            total_iters = self._learn_results['total_iterations'][-1]
+            last_epoch = self._learn_results['epoch'][-1]
 
         # Initialize progress bar to show training progress.
         n_batches = len(train_loader)
         pb_epochs = utils.ProgressBar(iterations=range(epochs*n_batches),
                                       title = 'FORECASTING MODEL TRAINING:')
+        
+        # lr_scheduler = CosineWarmupScheduler(optimizer=optimizer, warmup=n_batches*2, max_iters=epochs*n_batches)
 
         for epoch in range(epochs):
             with torch.no_grad():
-                for _, (events, event_lengths) in enumerate(valid_loader):
+                for v_batch, (events, event_lengths) in enumerate(valid_loader):
 
                     # Allocate events and event_lengths tensors to the device
                     # defined by the model.
@@ -816,15 +764,15 @@ class ConjunctionEventForecaster(nn.Module):
                     # Compute loss using the criterion and add it to the array.
                     loss = criterion(output, target)
                     valid_loss = float(loss)
-                    self._hist_valid_loss.append(valid_loss)
-                    self._hist_valid_loss_iters.append(total_iters)
+
+
                     
             # Iterate over all batches containes in the training loader. Every 
-            # batch (i_minibatch) contains an equal number of events which in 
+            # batch (t_batch) contains an equal number of events which in 
             # turn may contain a different number of CDM objects.
-            for i_minibatch, (events, event_lengths) in enumerate(train_loader):
+            for t_batch, (events, event_lengths) in enumerate(train_loader):
                 total_iters += 1
-                relative_iters = (epoch*n_batches + i_minibatch + 1)
+                relative_iters = (epoch*n_batches + t_batch + 1)
 
                 # Allocate events and event_lengths tensors to the device 
                 # defined by the model.
@@ -857,38 +805,54 @@ class ConjunctionEventForecaster(nn.Module):
                 # Compute MSE loss using criterion and store it in an array.
                 loss = criterion(output, target)
                 train_loss = float(loss)
-                self._hist_train_loss.append(train_loss)
 
                 # Backpropagate MSE loss.
                 loss.backward()
 
                 # Update model hyperparameters taking into account the loss.
                 optimizer.step()
+                # lr_scheduler.step()
 
-                # Convert loss from the training dataset to numpy and store it.
-                self._hist_train_loss_iters.append(total_iters)
 
                 # Update progress bar.
-                description = f'Minibatch {i_minibatch+1}/{n_batches} | ' + \
+                description = f'Batch {t_batch+1}/{n_batches} | ' + \
                     f'Loss -> Train = {train_loss:6.4e} : ' + \
                     f'Valid = {valid_loss:6.4e}'
 
                 pb_epochs.refresh(i = relative_iters, 
                                   description = description,
                                   nested_progress = True)
-                
-            # If filename_prefix is provided, save check point at the end of the
-            # epoch.
-            if filename_prefix is not None:
-                filename = filename_prefix + '_epoch_{}'.format(epoch+1)
-                pb_epochs.refresh(i = relative_iters, 
-                                  description = f'Saving model checkpoint' + \
-                                                f' to file: {filename} ...',
-                                  nested_progress = True)
-                self.save(filename)
+
+                self._learn_results['total_iterations'].append(total_iters)
+                self._learn_results['validation_loss'].append(valid_loss)
+                self._learn_results['training_loss'].append(train_loss)
+                self._learn_results['epoch'].append(last_epoch + epoch)
+                self._learn_results['learning_rate'].append(self._get_lr(optimizer))
+                self._learn_results['batch_size'].append(batch_size)
 
         # Print message at the end of the mini batch.
         pb_epochs.refresh(i = relative_iters, description = description)
+
+        if checkpoint_filepath is not None:
+            self._save_checkpoint(filepath=checkpoint_filepath,
+                                  epochs = epochs)
+            
+    def _save_checkpoint(self, filepath:str):
+        torch.save({
+            'epochs': self.epochs,
+            'model_state_dict': self.state_dict(),
+            'optimizer_state_dict': self.optimizer.state_dict(),
+            'loss': self._loss,
+            'learn_results': self._learn_results
+        }, filepath)
+        
+    def _load_checkpoint(self, filepath:str):
+        checkpoint = torch.load(filepath)
+
+        self.load_state_dict(checkpoint['model_state_dict'])
+        self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        self._loss = checkpoint['loss']
+        self._learn_results = checkpoint['learn_results']
 
     @staticmethod      
     def _get_lr(optimizer) -> float:
@@ -1106,13 +1070,14 @@ class ConjunctionEventForecaster(nn.Module):
 
         for module_name, module in self.model.items():
             if not 'lstm' in module_name: continue
+
             h = torch.zeros(module.num_layers, batch_size, module.hidden_size)
             c = torch.zeros(module.num_layers, batch_size, module.hidden_size)
 
             h = h.to(self._device)
             c = c.to(self._device)
             
-            self.hidden[module_name] = (h.squeeze(0), c.squeeze(0))
+            self.hidden[module_name] = (h, c)
 
 
     def forward(self, x:torch.Tensor, x_lengths:torch.IntTensor) -> torch.Tensor:
@@ -1161,31 +1126,22 @@ class ConjunctionEventForecaster(nn.Module):
                 # x, _ = pad_packed_sequence(sequence = x, 
                 #                            batch_first = module.batch_first, 
                 #                            total_length = x_length_max)
-            elif 'attention' in module_name: 
-
-                # If it is a self-attention layer use the encoder outputs and 
-                # decoder inputs to get the attended representation of the input 
-                # sequence
-
-                # Check if hidden states from encoder are given as a tupple 
-                # (LSTM) or as a torch (GRU)
-                if isinstance(self.hidden['lstm_encoder'], tuple):
-
-                    print(self.hidden['lstm_encoder'][0].size())
-                    outputs_encoder = self.hidden['lstm_encoder'][0]
-                    inputs_decoder  = self.hidden['lstm_decoder'][0]
-                else:
-                    outputs_encoder = self.hidden['lstm_encoder']
-                    inputs_decoder  = self.hidden['lstm_decoder']
-
-                x = module(outputs_encoder = outputs_encoder,
-                           inputs_decoder = inputs_decoder)
-                print(f'Attention layer output size {x.size()}')
                 
             else:
                 x = module(x)
             
         return x
+    
+
+    # def forward(self, x, x_lengths):
+    #     batch_size, x_length_max, _ = x.size()
+    #     x = torch.nn.utils.rnn.pack_padded_sequence(x, x_lengths, batch_first=True, enforce_sorted=False)
+    #     x, self.hidden['lstm'] = self.model['lstm'](x, self.hidden['lstm'])
+    #     x, _ = torch.nn.utils.rnn.pad_packed_sequence(x, batch_first=True, total_length=x_length_max)
+    #     x = self.model['dropout'](x)
+    #     x = self.model['relu'](x)
+    #     x = self.model['linear'](x)
+    #     return x
 
 
 #%% CLASS: CollisionRiskProbabilityEstimator
