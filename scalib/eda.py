@@ -93,7 +93,8 @@ def kelvins_challenge_events(filepath:str, num_events:int = None,
     rtn_components = ['R', 'T', 'N', 'RDOT', 'TDOT', 'NDOT']
 
     # Iterate over all features to get the time series subsets
-    pb_events = utils.ProgressBar(iterations = range(num_events), 
+    pb_events = utils.ProgressBar(iterations = range(num_events),
+                    title = 'KELVINS DATASET IMPORT:', 
                     description='Importing Events from Kelvins dataset...')
 
     # Initialize counter for progressbar

@@ -760,6 +760,9 @@ class ProgressBar():
         # Initialize average duration of iteration
         self.avg_it_duration = 0.0
 
+        # Initialize number of iterations per second
+        self._its_per_second = 0.0
+
 
     def get_progress(self):
 
@@ -813,7 +816,7 @@ class ProgressBar():
             if self.avg_it_duration > 0:
                 self._its_per_second = 1.0/self.avg_it_duration
             else:
-                self.avg_it_duration = self._n_iterations
+                self._its_per_second = self._n_iterations
             
             # Compute estimated time remaining and overall duration.
             self.ert = self.avg_it_duration * \

@@ -458,7 +458,8 @@ class ConjunctionEventsDataset(EventsPlotting):
 
         # Initialize counter and progress bar object
         n = 0
-        pb_events = utils.ProgressBar(iterations = range(len(df_events)), 
+        pb_events = utils.ProgressBar(iterations = range(len(df_events)),
+            title = 'PANDAS DATAFRAME -> CONJUNCTION EVENTS DATASET:', 
             description='Importing Events from pandas DataFrame...')
 
         # Iterate over all events
@@ -503,7 +504,7 @@ class ConjunctionEventsDataset(EventsPlotting):
 
         # Print final message in progress bar.
         pb_events.refresh(i = n+1, 
-            description='DataFrame imported as Events dataset.')
+            description='Events dataset imported.')
         
         # Create ConjunctionEventsDataset object with the list of events 
         # extracted.
@@ -529,7 +530,9 @@ class ConjunctionEventsDataset(EventsPlotting):
         # Initialize list to store events and progress bar.
         event_dataframes = []
         pb_events = utils.ProgressBar(iterations=self._events,
-            description='Importing Conjunction Events dataset...')
+            title = 'CONJUNCTION EVENTS DATASET -> PANDAS DATAFRAME:',
+            description='Saving Conjunction Events dataset as pandas' + \
+                        ' DataFrame...')
 
         # Iterate over all events objects contained in the class.
         for e, event in enumerate(pb_events.iterations):
@@ -544,7 +547,7 @@ class ConjunctionEventsDataset(EventsPlotting):
         
         # Update progress bar with the last message.
         pb_events.refresh(i = e+1, 
-            description='Imported as DataFrame.')
+            description='Pandas DataFrame saved.')
         
         self._dataframe = pd.concat(event_dataframes, ignore_index=True)
         
