@@ -5,471 +5,106 @@ from typing import Union
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
+import os
 import numpy as np
+import pandas as pd
 from matplotlib import pyplot as plt
-import warnings
 
 from . import utils
+from .event import DatasetEventDataset
 from .event import ConjunctionEvent as CE
 from .event import ConjunctionEventsDataset as CED
 from .cdm import ConjunctionDataMessage as CDM
 
 
 #%%CLASS: CosineWarmupScheduler
+# https://github.com/pytorch/pytorch/blob/main/torch/optim/lr_scheduler.py
 class CosineWarmupScheduler(optim.lr_scheduler._LRScheduler):
 
-    def __init__(self, optimizer, warmup, max_iters):
-        self.warmup = warmup
-        self.max_num_iters = max_iters
+    def __init__(self, optimizer:optim.Optimizer, warmup_epochs:int, 
+                 max_epochs:int) -> None:
+        """Initialize scheduler object.
+
+        Args:
+            optimizer (optim.Optimizer): Optimization algorithm (SGD, Adam, ...).
+            warmup_epochs (int): Number of epochs to linearly increment base 
+            learning rate provided.
+            max_epochs (int): Number of iterations at which the learning rate 
+            becomes 0. Learning rate adaptation takes place between warmup and 
+            max_iters. 
+        """
+        self.warmup_epochs = warmup_epochs
+        self.max_epochs = max_epochs
         super().__init__(optimizer)
 
-    def get_lr(self):
+    def get_lr(self) -> list:
+        """Recompute new base learning rates using the new learning rate factor.
+
+        Returns:
+            list: New base learning rates list.
+        """
+
+        # Get new learning rate factor from the last computed learning rate by 
+        # current scheduler.
         lr_factor = self.get_lr_factor(epoch=self.last_epoch)
+
+        # Return new list of learning rates using the new learning factor and 
+        # the initial learning rate.
         return [base_lr * lr_factor for base_lr in self.base_lrs]
 
-    def get_lr_factor(self, epoch):
-        lr_factor = 0.5 * (1 + np.cos(np.pi * epoch / self.max_num_iters))
-        if epoch <= self.warmup:
-            lr_factor *= epoch * 1.0 / self.warmup
+    def get_lr_factor(self, epoch:int) -> float:
+
+        # Get learning factor using cosine trigonometric function.
+        lr_factor = 0.5 * (1 + np.cos(np.pi * epoch / self.max_epochs))
+
+        # Implement warmup adaptation to the cosine evolution of the learning 
+        # rate. This adaptation is gradual from 0 to 100% the cosine function 
+        # function when epoch = warmup_epochs.
+        if epoch <= self.warmup_epochs:
+            lr_factor *= epoch / self.warmup_epochs
+
         return lr_factor
-#%% CLASS: SelfAttentionLayer
-# Link: https://www.analyticsvidhya.com/blog/2023/06/time-series-forecasting-using-attention-mechanism/
-# https://stats.stackexchange.com/questions/421935/what-exactly-are-keys-queries-and-values-in-attention-mechanisms
-
-# Self-Attention Mechanism
-# The self-attention mechanism calculates attention weights by comparing the 
-# similarities between all pairs of time steps in the sequence. Let’s denote the 
-# encoded hidden states as H = [H1, H2, …, H_T]. Given an encoded hidden state Hi 
-# and the previous decoder hidden state (prev_dec_hidden = Hd_T-1), the attention 
-# mechanism calculates a score for each encoded hidden state:
-
-# Score(t) = V * tanh(W1 * HT + W2 * prev_dec_hidden)
-
-# Here, W1 and W2 are learnable weight matrices, and V is a learnable vector. 
-# The tanh function applies non-linearity to the weighted sum of the encoded 
-# hidden state and the previous decoder hidden state.
-
-# The scores are then passed through a softmax function to obtain attention 
-# weights (alpha1, alpha2, …, alphaT). The softmax function ensures that the 
-# attention weights sum up to 1, making them interpretable as probabilities. The 
-# softmax function is defined as:
-
-# softmax(x) = exp(x) / sum(exp(x))   ->    alpha_T = softmax(Score_T)
-
-# Where x represents the input vector.
-
-# The context vector (context) is computed by taking the weighted sum of 
-# the encoded hidden states:
-
-# context = alpha1 * H1 + alpha2 * H2 + … + alpha_T * H_T
-
-# The context vector represents the attended representation of the input 
-# sequence, highlighting the relevant information for making 
-# predictions. By utilizing self-attention, the model can efficiently 
-# capture dependencies between different time steps, allowing for more 
-# accurate forecasts by considering the relevant information across the 
-# entire sequence.
-
-class SelfAttentionLayer(nn.Module):
-    def __init__(self, input_size:int, batch_first:bool=True, 
-                 num_heads:int=1) -> None:
-
-        super(SelfAttentionLayer, self).__init__()
-
-        # Initialize input and output sizes
-        self.input_size = input_size
-        self.attention = nn.MultiheadAttention(embed_dim = input_size, 
-                                               num_heads = num_heads,
-                                               batch_first = batch_first)
-
-    def forward(self, x:torch.Tensor) -> torch.Tensor:
-
-        attn_output = self.attention(query = x, 
-                                     key = x, 
-                                     value = x, 
-                                     need_weights = False)
-
-        return attn_output[0]
-#%% CLASS: LSTMLayer
-class LSTMLayer(nn.Module):
-    """Layer constructor for LSTM based RNN architecture.
-    """
-
-    def __init__(self, cell, input_size:int, hidden_size:int, **cell_args:dict):
-        """Initialize LSTM cell.
-
-        Args:
-            cell (constructor): LSTM cell constructor.
-            input_size (int): Number of inputs.
-            hidden_size (int): Number of hidden cells (outputs of the cell).
-            *cell_args (dict, optional): Dictionary containing optional 
-            arguments required for the LSTM cell constructor (i.e. SLIMX 
-            constructor receives the additional parameter 'version').
-        """
     
-        super(LSTMLayer, self).__init__()
-
-        # Initialize inputs and hidden sizes
-        self.input_size = input_size
-        self.hidden_size = hidden_size
+    @staticmethod
+    def plot_lr_factor(warmup_epochs:int, max_epochs:int, 
+                       figsize:tuple = (8, 3), figtitle:str = None, 
+                       filepath:str = None) -> None:
         
-        # Initialize cell attribute in class witht the LSTM cell object 
-        # initialized.
-        
-        self.cell = cell(input_size = input_size, 
-                         hidden_size = hidden_size, 
-                         **cell_args)
+        # Initialze lr scheduler with any optimizer and learnable parameter.
+        p = nn.Parameter(torch.empty(4,4))
+        optimizer = optim.Adam([p], lr=1e-3)
 
-    def forward(self, input: torch.TensorFloat, state:tuple) -> tuple:
-        """Forward operation through all time steps of a given input.
+        lr_scheduler = CosineWarmupScheduler(optimizer = optimizer, 
+                                             warmup_epochs=warmup_epochs, 
+                                             max_epochs = max_epochs)
 
-        Args:
-            input (torch.TensorFloat): Tensor containing the values at every 
-            time step of a sequence.
-            state (tuple): Tuple of tensors containing previous hidden state and
-            cell state (at time t-1) required to produce the next output.
+        # Plotting
+        epochs = list(range(max_epochs))
 
-        Returns:
-            tuple: Tuple with two tensors:
-                - outputs (torch.TensorFloat): Forecasted values of X for the 
-                    next time step (ht ~ Xt+1) 
-                - states (tuple): Tuple containing  two tensors: one with the 
-                    last hidden state (predicted Xt+1 value) and cell state 
-                    (cell context) required to produce the next prediction.
-        """
+        fig, ax = plt.subplots(figsize=figsize)
 
-        
-    
-        # Remove tensor dimension from inputs.
-        inputs = input.unbind(0)
-        outputs = []
-
-        # Iterate over all the different time steps of a given sequence (inputs).
-        for x_t in inputs:
-
-            # Forecast Xt value t+1 (hidden state - ht) and the cell state 
-            # holding the cell "configuration parameters" for the next time step.
-            out, state = self.cell(x_t, state)
-            outputs += [out]
-
-        # Return the list of outputs produced by the LSTM cell and the last 
-        # hidden states at time t (hidden_state, cell_state).
-
-        # Return predicted values at every time step (ht ~ Xt+1) and the last 
-        # hidden state (cell configuration/context) from the sequence. Only the 
-        # last hidden states are returned because they are the most relevant in 
-        # terms of learning (learnt from the entire sequence of inputs).
-        return torch.stack(outputs), state
-      
-        
-#%% CLASS: LSTM
-class LSTM(nn.Module):
-    """Adapted nn.LSTM class that allows the use of custom LSTM cells.
-    """
-    def __init__(self, input_size:int, hidden_size:int, cell, 
-        batch_first:bool=True, num_layers:int=1, 
-        dropout:float=0.0, **cell_args:dict) -> None:
-        """Initialize adapted LSTM class.
-
-        Args:
-            input_size (int): Number of input features.
-            hidden_size (int): Number of hidden neurons (outputs of the LSTM).
-            cell (constructor): LSTM cell constructor.
-            num_layers (int, optional): Number of stacked LSTM layers (LSTM 
-            depth). Defaults to 1.
-            dropout (float, optional): Dropout probability to use 
-            between consecutive LSTM layers. Only applicable if num_layers is 
-            greater than 1. Defaults to None.
-        """
-    
-        super(LSTM, self).__init__()
-        
-        # Get all LSTM layers in a list using the LSTMLayer constructor.
-        layers = [LSTMLayer(cell = cell, 
-                            input_size = input_size, 
-                            hidden_size = hidden_size, 
-                            **cell_args)] + \
-                 [LSTMLayer(cell = cell, 
-                            input_size = hidden_size, 
-                            hidden_size = hidden_size, 
-                            **cell_args) for _ in range(num_layers - 1)]
-        
-        # Set network dimensions
-        self.input_size = input_size
-        self.hidden_size = hidden_size
-        
-        # Set batch_first parameter
-        self.batch_first = batch_first
-        self._batched = None
-        
-        # Convert list of LSTM layers to list of nn.Modules.
-        self.layers = nn.ModuleList(layers)
-        
-        # Introduces a Dropout layer on the outputs of each LSTM layer except
-        # the last layer.
-        self.num_layers = num_layers
-
-        # If number of LSTM layers is 1 and the dropout_probability provided is
-        # not None, print warning to the user.
-        if num_layers == 1 and dropout > 0:
-            warnings.warn(
-                "Dropout parameter in LSTM class adds dropout layers after " 
-                "all but last recurrent layer. It expects num_layers greater "
-                "> 1, but got num_layers = 1."
-            )
-        
-        # If dropout_probability is provided initialize Dropout Module. 
-        if dropout > 0 and num_layers > 1:
-            self.dropout_layer = nn.Dropout(p = dropout)
+        ax.plot(epochs, [lr_scheduler.get_lr_factor(e) for e in epochs])
+        ax.set_ylabel("Learning rate factor")
+        ax.set_xlabel("Epochs")
+        if figtitle is not None:
+            ax.set_title(figtitle)
         else:
-            self.dropout_layer = None
+            ax.set_title("Learning rate evolution")
+
+        ax.grid(True, linestyle='--', color='gray')
+        ax.set_xlim(0, max_epochs)
+        ax.set_ylim(0, 1)
+        ax.set_xticks(np.arange(max_epochs))
+
+        # Save figure if filepath is provided.
+        if filepath is not None:
+            print('Plotting to file: {}'.format(filepath))
+            fig.savefig(filepath)
 
 
-    def forward(self, input: torch.Tensor, states: torch.Tensor) -> tuple:
-        """Forward operation through all time steps of a given input and all 
-        LSTM layers.
-
-        Args:
-            input (torch.Tensor): Tensor of shape (seq_length, hidden_size) 
-            if unbatched, (batch_size, seq_length, hidden_size) if batched and 
-            batch_first = True, or (seq_length, batch_size, hidden_size) if 
-            batched and batch_first = False. It containins the values at 
-            every time step of a sequence.
-            states (torch.Tensor): Tensor of shape (num_layers, hidden_size) 
-            if input is unbatched, or (num_layers, batch_size, hidden_size) if 
-            batched. It contains tuples of tensors of every LSTM layer. Every 
-            tuple contains two tensors for the previous hidden state and cell 
-            state (at time t-1) required to produce the next output for the 
-            layer.
-
-        Returns:
-            tuple: Tuple with two values:
-                - outputs (torch.Tensor): Tensor of shape (seq_length, 
-                hidden_size) for unbatched input, (batch_size, seq_length, 
-                hidden_size) for batched input if batch_first = True, or 
-                (seq_length, batch_size, hidden_size) for batched input if 
-                batch_first = False. It contains the forecasted values of X for 
-                the next time step (ht ~ Xt+1).
-                - states (tuple): Tuple with two tensors with shape: 
-                    + output: Tensor with shape (num_layers, hidden_size) for 
-                    unbatched input or (num_layers, batch_size, hidden_size) for
-                    batched output. It contains the last hidden state 
-                    (predicted Xt+1 value) 
-                    + (h_t, c_t): Tensors with shape (num_layers, hidden_size) 
-                    for unbatched input or (num_layers, batch_size, hidden_size) 
-                    for batched output. It contains the cell states (cell 
-                    context) required to produce the next prediction of the 
-                    layer.
-        """
-
-        if (self._batched is None) and \
-            (isinstance(input, torch.nn.utils.rnn.PackedSequence) or \
-            (isinstance(input, torch.Tensor) and len(input.size())==3)):
-            self._batched = True
-    
-        if self._batched:
-            # Input tensor is batched
-            if self.batch_first:
-                batch_size, seq_length, _ = input.size()
-            else:
-                seq_length, batch_size, _ = input.size()
-        else:
-            # Input tensor is unbatched.
-            seq_length, _ = input.size()
-
-        
-
-        # Initialize list to store a tuple per layer containing the hidden and 
-        # cell states required for the next output prediction
-        output_hstates = []
-        output_cstates = []
-
-        # Initialize input layer tensor (tensor to be passed first to the layer
-        # whose input_size is the input number of features)
-        input_layer = input
-
-        for i, layer in enumerate(self.layers):
-
-            # Get the hidden states tensor at layer i:
-            #  - batched=True -> (num_layers, batch_size, hidden_size)
-            #  - batched=False -> (num_layers, hidden_size)
-
-            hstate = states[0][i] if self.num_layers > 1 else states[0]
-            cstate = states[1][i] if self.num_layers > 1 else states[1]
-            
-            # If inputs are batched, iterate over all batches.
-            if self._batched:
-
-                # Initialize output_layer with the dimensions of the outputs 
-                # from the layer.
-                if self.batch_first:
-                    output_layer = torch.zeros((batch_size, 
-                                                seq_length, 
-                                                layer.hidden_size))
-                else:
-                    output_layer = torch.zeros((seq_length,
-                                                batch_size,  
-                                                layer.hidden_size))
-
-                # Initialize tensor to keep the states returned at the end of 
-                # the sequence processing in every batch b.
-                out_hstate = torch.zeros((batch_size, layer.hidden_size))
-                out_cstate = torch.zeros((batch_size, layer.hidden_size))
-
-                # Iterate through all batches- to get the output and states per 
-                # batch.
-                for b in range(batch_size):
-
-                    # Get the batch input tensor b for the layer i depending on 
-                    # the shape of the input tensor.
-                    batch_input = input_layer[b, :, :] if self.batch_first \
-                        else torch.squeeze(input_layer[:, b, :], dim = 1)
-                    
-                    # Get the batch states for the layer i
-                    batch_state = (torch.squeeze(hstate[b]), 
-                                   torch.squeeze(cstate[b]))
-
-                    # Get the output and states of the layer for the batch b
-                    batch_output, batch_state = layer.forward(batch_input, 
-                                                              batch_state)
-
-                    # Save batch output depending on the inputs shape.              
-                    if self.batch_first:
-                        output_layer[b, :, :] = batch_output
-                    else:
-                        output_layer[:, b, :] = batch_output
-
-                    # Keep last cell state of the sequence for batch b and i 
-                    # layer.
-                    out_hstate[b] = batch_state[0]
-                    out_cstate[b] = batch_state[1]
-
-            else:
-
-                # Keep last cell state of sequence
-                output_layer, (out_hstate, out_cstate) = layer(input_layer, 
-                                                               (hstate, cstate))
-
-                
-            # Apply the dropout layer except the last layer
-            if (i < self.num_layers - 1) and not (self.dropout_layer is None):
-                output_layer = self.dropout_layer(output_layer)
-
-            # Redefine input_layer tensor from the output of previous layer.
-            input_layer = output_layer
-
-            # Add last states from squences (and from all batches if input is 
-            # batched) to final list.    
-            output_hstates += [out_hstate]
-            output_cstates += [out_cstate]
-
-        # Convert lists to tensors 
-        hstates = torch.stack(output_hstates) if self.num_layers > 1 \
-                                else output_hstates[0]
-        cstates = torch.stack(output_cstates) if self.num_layers > 1 \
-                                else output_cstates[0]
-        
-        # Return the outputs of the LSTM and the hidden states for every LSTM 
-        # layer.
-        return output_layer, (hstates, cstates)
-        
-        
-#%% CLASS: DatasetEventDataset
-class DatasetEventDataset(Dataset):
-    def __init__(self, event_set:list, features:list, 
-                 features_stats:dict = None) -> None:
-                 
-        # Initialize the list of events.
-        self._event_set = event_set
-        
-        # Get the maximum number of CDMs stored in a single conjunction event. 
-        # This internal variable will be used to pad the torch of every event 
-        # with zeros, that is, empty CDM objects will be added to Events with 
-        # less CDMs that max_event_length.
-        self._max_event_length = max(map(len, self._event_set))
-        self._features = features
-        self._features_length = len(features)
-        
-        # Compute statistics for every feature if not already passed
-        # into the class
-        if features_stats is None:
-            # Cast list of events objects to pandas DataFrame.
-            df = event_set.to_dataframe()
-            
-            # Get list of features containing any missing value.
-            null_features = df.columns[df.isnull().any()]
-            for feature in features:
-                if feature in null_features:
-                    raise RuntimeError('Feature {} is not present in the ' + \
-                                       'dataset'.format(feature))
-                    
-            # Convert feature data to numpy array to compute statistics.
-            features_numpy = df[features].to_numpy() 
-            self._features_stats = {'mean': features_numpy.mean(0), 
-                                    'stddev': features_numpy.std(0)}
-        else:
-            self._features_stats = features_stats
-
-    def __len__(self) -> int:
-        return len(self._event_set)
-
-    def __getitem__(self, i:int) -> tuple:
-        """Get item from Events Dataset. 
-
-        Args:
-            i (int): Index of item to retrieve (CDM index).
-
-        Returns:
-            tuple: Tuple containing two tensors:
-             - First item contains the feature values normalized. Dimensions 
-                vary depending on the method used to retrieve the data:
-                  + Single item (from Dataset): (max_event_length, features)
-                  + Batch of items (DataLoader): (batch_size, max_event_length, 
-                  features)
-             - Second item stores the number of the CDM objects the event 
-                contains. This item is required for packing padded torch and 
-                optimize computing. Dimensions  vary depending on the method 
-                used to retrieve the data:
-                  + Single item (from Dataset): (max_event_length, 1)
-                  + Batch of items (DataLoader): (batch_size, max_event_length, 1)
-        """
-        
-        # Get event object from the set.
-        event = self._event_set[i]
-        
-        # Initialize torch with zeros and shape (max_event_length, n_features).
-        # This torch forces all events to have the same number of CDMs by using
-        # the internal variable _max_event_length. It basically creates a padded
-        # torch, which helps to do batch processing with the DataLoader class.
-        x = torch.zeros(self._max_event_length, self._features_length)
-        
-        # Iterate over all CDM objects in the event i and apply standard 
-        # normalization (x - mean)/(std + epsilon). Note: A constant epsilon
-        # is introduced to remove value errors caused by division by zero.
-        epsilon = 1e-8
-        for i, cdm in enumerate(event):
-
-            # Initialize list to store normalized values for every feature in a
-            # given CDM.
-            norm_values = []
-
-            for j, feature in enumerate(self._features):
-                # Get mean and standard deviation per feature.
-                feature_mean = self._features_stats['mean'][j]
-                feature_stddev = self._features_stats['stddev'][j]
-                
-                # Append normalized values from feature to the list.
-                norm_values += [(cdm[feature] - feature_mean)/
-                                (feature_stddev + epsilon)]
-                
-            # Add normalized values from all features to the output tensor.
-            x[i] = torch.tensor(norm_values)
-
-        return x, torch.tensor(len(event))
-    
 #%% CLASS: ConjunctionEventForecaster
 # Define Feature Forecaster module
 class ConjunctionEventForecaster(nn.Module):
@@ -559,7 +194,7 @@ class ConjunctionEventForecaster(nn.Module):
 
 
     def plot_loss(self, filepath:str = None, figsize:tuple = (6, 3), 
-                  log_scale:bool = False) -> None:
+                  log_scale:bool = False, plot_lr:bool=False) -> None:
         """Plot RNN loss in the training set (orange) and validation set (blue) 
         vs number of iterations during model training.
 
@@ -569,30 +204,48 @@ class ConjunctionEventForecaster(nn.Module):
             figsize (tuple, optional): Size of the plot. Defaults to (6 ,3).
             log_scale (bool, optional): Flag to plot Loss using logarithmic 
             scale. Defaults to False.
+            plot_lr (bool, optional): Include learning rate evolution during
+            training. Defaults to False.
         """
 
         # Apply logarithmic transformation if log_scale is set to True. This 
         # helps to see the evolution when variations between iterations are 
         # small.
+        iterations = self._learn_results['total_iterations']
+
         train_loss = self._learn_results['training_loss']
-        train_loss = np.log(train_loss) if log_scale else train_loss
+        train_loss = pd.Series(np.log(train_loss) if log_scale else train_loss, 
+                            iterations).drop_duplicates(keep='first')
 
         valid_loss = self._learn_results['validation_loss']
-        valid_loss = np.log(valid_loss) if log_scale else valid_loss
+        valid_loss = pd.Series(np.log(valid_loss) if log_scale else valid_loss, 
+                               iterations).drop_duplicates(keep='first')
         
         # Initialize plot object.
         fig, ax = plt.subplots(figsize = figsize)
 
         # Plot training loss vs iterations.
-        ax.plot(self._learn_results['total_iterations'], train_loss, 
-                label='Training', color='tab:orange')
+        ax.plot(train_loss, label='Training', color='tab:orange')
         
         # Plot validation loss vs iterations.
-        ax.plot(self._learn_results['total_iterations'], valid_loss, 
-                label='Validation', color='tab:blue')
+        ax.plot(valid_loss, label='Validation', color='tab:blue')
+
+        # Plot learning rate if required
+        if plot_lr:
+
+            # Get learning rate
+            lr = pd.Series(self._learn_results['learning_rate'], 
+                           iterations)
+            
+            # Add right axis to plot learning rate.
+            ax_lr = ax.twinx()
+
+            ax_lr.set_ylabel('Learning rate', color = 'tab:green')  
+            ax_lr.set_ylim(0, lr.max()*1.25)
+            ax_lr.plot(lr, label='Learning rate', color = 'tab:green')
         
         # Set X-axis limits.
-        ax.set_xlim(0, self._learn_results['total_iterations'][-1])
+        ax.set_xlim(0, valid_loss.index.max())
 
         # Set axes labels.
         ax.set_xlabel('Number of iterations')
@@ -605,12 +258,12 @@ class ConjunctionEventForecaster(nn.Module):
         # Save figure if filepath is provided.
         if filepath is not None:
             print('Plotting to file: {}'.format(filepath))
-            plt.savefig(filepath)
+            fig.savefig(filepath)
 
     def learn(self, event_set:list, epochs:int = 2, lr:float = 1e-3, 
               batch_size:int = 8, device:str = None, 
               valid_proportion:float = 0.15, num_workers:int = 4, 
-              event_samples_for_stats:int = 250, checkpoint_filepath:str = None, 
+              event_samples_for_stats:int = 250, filepath_model:str = None, 
               **kwargs) -> None:
         """Train RNN model.
 
@@ -629,15 +282,15 @@ class ConjunctionEventForecaster(nn.Module):
             event_samples_for_stats (int, optional): Number of events considered 
             to compute the mean and standard deviation used for normalization. 
             Defaults to 250.
-            checkpoint_filepath (str, optional): Filepath for the model 
-            checkpoint  (model saved at the end of training). If None, no 
-            checkpoint is created. Defaults to None.
+            filepath_model (str, optional): Filepath for the model 
+            to be saved. If None, model is not saved. Defaults to None.
 
         Raises:
             ValueError: valid_proportion is not in the range (0, 1).
             RuntimeError: Validation set does not contain any event as a result 
             of valid_proportion being too low.
         """
+
 
         
         # Define the device on which the torch will be allocated:
@@ -704,10 +357,32 @@ class ConjunctionEventForecaster(nn.Module):
         valid_loader = DataLoader(valid_set, batch_size = len(valid_set), 
                                   shuffle = True, num_workers = num_workers)
 
+
+
         # Set-up optimizer and criterion.
-        optimizer = optim.Adam(self.parameters(), lr = lr)
-        
-        criterion = nn.MSELoss()
+        self.optimizer = optim.Adam(self.parameters(), lr = lr)
+        self.criterion = nn.MSELoss()
+
+        # Initialize lr_scheduler
+        # lr_scheduler = CosineWarmupScheduler(optimizer = self.optimizer, 
+        #                                      warmup_epochs = 2, 
+        #                                      max_epochs = 20)
+
+        # Check if the same model already exists. If it does, load model 
+        # parameters.
+        if filepath_model is not None and os.path.exists(filepath_model):
+            self.load(filepath_model)
+            self.optimizer.param_groups[0]['lr'] = lr
+            print('\nModel parameters loaded from {}:\n'
+                  ' - Total epochs       = {}\n'
+                  ' - Total iterations   = {}\n'
+                  ' - Validation loss    = {:6.4e}\n'
+                  ' - Last learning rate = {:6.4e}\n'
+                  ''.format(filepath_model,
+                            self._learn_results['epoch'][-1],
+                            self._learn_results['total_iterations'][-1],
+                            self._learn_results['validation_loss'][-1],
+                            self._learn_results['learning_rate'][-1]))
 
         # Set training mode ON to inform layers such as Dropout and BatchNorm, 
         # which are designed to behave differently during training and 
@@ -726,13 +401,11 @@ class ConjunctionEventForecaster(nn.Module):
         # Initialize progress bar to show training progress.
         n_batches = len(train_loader)
         pb_epochs = utils.ProgressBar(iterations=range(epochs*n_batches),
-                                      title = 'FORECASTING MODEL TRAINING:')
-        
-        # lr_scheduler = CosineWarmupScheduler(optimizer=optimizer, warmup=n_batches*2, max_iters=epochs*n_batches)
+                                      title = 'TRAINING FORECASTING MODEL:')
 
         for epoch in range(epochs):
             with torch.no_grad():
-                for v_batch, (events, event_lengths) in enumerate(valid_loader):
+                for _, (events, event_lengths) in enumerate(valid_loader):
 
                     # Allocate events and event_lengths tensors to the device
                     # defined by the model.
@@ -762,8 +435,8 @@ class ConjunctionEventForecaster(nn.Module):
                     output = self.forward(inputs, event_lengths)
 
                     # Compute loss using the criterion and add it to the array.
-                    loss = criterion(output, target)
-                    valid_loss = float(loss)
+                    self._loss = self.criterion(output, target)
+                    valid_loss = float(self._loss)
 
 
                     
@@ -799,20 +472,22 @@ class ConjunctionEventForecaster(nn.Module):
                 self.reset(batch_size)
 
                 # Clear all the gradients of all the parameters of the model.
-                optimizer.zero_grad()
+                self.optimizer.zero_grad()
                 output = self.forward(inputs, event_lengths)
 
                 # Compute MSE loss using criterion and store it in an array.
-                loss = criterion(output, target)
-                train_loss = float(loss)
+                self._loss = self.criterion(output, target)
+                train_loss = float(self._loss)
+
+                # Get learning rate used
+                lr = self.optimizer.param_groups[0]['lr']
 
                 # Backpropagate MSE loss.
-                loss.backward()
+                self._loss.backward()
 
                 # Update model hyperparameters taking into account the loss.
-                optimizer.step()
+                self.optimizer.step()
                 # lr_scheduler.step()
-
 
                 # Update progress bar.
                 description = f'Batch {t_batch+1}/{n_batches} | ' + \
@@ -823,41 +498,60 @@ class ConjunctionEventForecaster(nn.Module):
                                   description = description,
                                   nested_progress = True)
 
+                # Save training information.
                 self._learn_results['total_iterations'].append(total_iters)
                 self._learn_results['validation_loss'].append(valid_loss)
                 self._learn_results['training_loss'].append(train_loss)
-                self._learn_results['epoch'].append(last_epoch + epoch)
-                self._learn_results['learning_rate'].append(self._get_lr(optimizer))
+                self._learn_results['epoch'].append(last_epoch + epoch + 1)
+                self._learn_results['learning_rate'].append(lr)
                 self._learn_results['batch_size'].append(batch_size)
 
         # Print message at the end of the mini batch.
         pb_epochs.refresh(i = relative_iters, description = description)
 
-        if checkpoint_filepath is not None:
-            self._save_checkpoint(filepath=checkpoint_filepath,
-                                  epochs = epochs)
+        if filepath_model is not None:
+            print(f'\nSaving model parameters ...', end='\r')
+            self.save(filepath = filepath_model)
+            print(f'Saving model parameters ... Done.')
             
-    def _save_checkpoint(self, filepath:str):
-        torch.save({
-            'epochs': self.epochs,
-            'model_state_dict': self.state_dict(),
-            'optimizer_state_dict': self.optimizer.state_dict(),
-            'loss': self._loss,
-            'learn_results': self._learn_results
-        }, filepath)
-        
-    def _load_checkpoint(self, filepath:str):
-        checkpoint = torch.load(filepath)
+    def save(self, filepath:str, only_parameters:bool=True):
+        """Save model to an external file.
 
-        self.load_state_dict(checkpoint['model_state_dict'])
-        self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        self._loss = checkpoint['loss']
-        self._learn_results = checkpoint['learn_results']
+        Args:
+            filepath (str): Path where the model is saved.
+            only_parameters (bool, optional): Save only models parameters or the 
+            entire model. Defaults to True.
+        """
+        if only_parameters:
+            torch.save({
+                'epochs': self._learn_results['epoch'][-1],
+                'model': self.state_dict() if only_parameters else self,
+                'optimizer': self.optimizer.state_dict() if only_parameters \
+                    else self.optimizer,
+                'loss': self._loss,
+                'learn_results': self._learn_results
+            },  filepath)
+        else:
+            torch.save(self, filepath)
 
-    @staticmethod      
-    def _get_lr(optimizer) -> float:
-        for param_group in optimizer.param_groups:
-            return param_group['lr']
+    def load(self, filepath:str):
+        """Load model instance or model parameters.
+
+        Args:
+            filepath (str): Path of the model source file.
+        """
+
+        if 'parameters' in filepath:
+
+            # Get the checkpoint file
+            torch_file = torch.load(filepath)
+
+            self.load_state_dict(torch_file['model'])
+            self.optimizer.load_state_dict(torch_file['optimizer'])
+            self._loss = torch_file['loss']
+            self._learn_results = torch_file['learn_results']
+        else:
+            self = torch.load(filepath)
 
     def predict(self, event: CE) -> CDM:
         """Predict next CDM object from a given ConjunctionEvent object.
@@ -1032,7 +726,6 @@ class ConjunctionEventForecaster(nn.Module):
                     i_event = i_event[:-1]
                     continue
 
-
                 # Stop loop if one of the conditions is met.
                 if (cdm['__CREATION_DATE'] > cdm['__TCA']) or \
                    (cdm['__TCA'] > 7) or \
@@ -1046,20 +739,6 @@ class ConjunctionEventForecaster(nn.Module):
 
         return events[0] if num_samples==1 \
             else CED(events = events)
-
-    def save(self, filepath:str) -> None:
-        """Save model to an external file.
-
-        Args:
-            filepath (str): Path where the model is saved.
-        """
-        print('Saving LSTM predictor to file: {}'.format(filepath))
-        torch.save(self, filepath)
-
-    @staticmethod
-    def load(filepath:str):
-        print('Loading LSTM predictor from file: {}'.format(filepath))
-        return torch.load(filepath)
 
     def reset(self, batch_size:int):
         """Initialize hidden state (h) and cell state (c) for all the LSTM 
@@ -1132,16 +811,8 @@ class ConjunctionEventForecaster(nn.Module):
             
         return x
     
-
-    # def forward(self, x, x_lengths):
-    #     batch_size, x_length_max, _ = x.size()
-    #     x = torch.nn.utils.rnn.pack_padded_sequence(x, x_lengths, batch_first=True, enforce_sorted=False)
-    #     x, self.hidden['lstm'] = self.model['lstm'](x, self.hidden['lstm'])
-    #     x, _ = torch.nn.utils.rnn.pad_packed_sequence(x, batch_first=True, total_length=x_length_max)
-    #     x = self.model['dropout'](x)
-    #     x = self.model['relu'](x)
-    #     x = self.model['linear'](x)
-    #     return x
+    def __hash__(self):
+        return hash(self.model)
 
 
 #%% CLASS: CollisionRiskProbabilityEstimator

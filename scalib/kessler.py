@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 from . import utils as util
 from .cdm import ConjunctionDataMessage as CDM
 from .event import ConjunctionEventsDataset as EventDataset
-from .nn import DatasetEventDataset
+from .xnn import DatasetEventDataset
 
 
 #%% CLASS: LSTMPredictor

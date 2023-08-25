@@ -2,6 +2,10 @@
 from __future__ import annotations
 from typing import Union
 
+# Import torch libraries
+import torch
+from torch.utils.data import Dataset
+
 import pandas as pd
 import numpy as np
 import matplotlib as mpl
@@ -16,7 +20,99 @@ from .cdm import ConjunctionDataMessage as CDM
 
 mpl.rcParams['axes.unicode_minus'] = False
 
+#%% CLASS: DatasetEventDataset
+class DatasetEventDataset(Dataset):
+    def __init__(self, event_set:list, features:list, 
+                 features_stats:dict = None) -> None:
+                 
+        # Initialize the list of events.
+        self._event_set = event_set
+        
+        # Get the maximum number of CDMs stored in a single conjunction event. 
+        # This internal variable will be used to pad the torch of every event 
+        # with zeros, that is, empty CDM objects will be added to Events with 
+        # less CDMs that max_event_length.
+        self._max_event_length = max(map(len, self._event_set))
+        self._features = features
+        self._features_length = len(features)
+        
+        # Compute statistics for every feature if not already passed
+        # into the class
+        if features_stats is None:
+            # Cast list of events objects to pandas DataFrame.
+            df = event_set.to_dataframe()
+            
+            # Get list of features containing any missing value.
+            null_features = df.columns[df.isnull().any()]
+            for feature in features:
+                if feature in null_features:
+                    raise RuntimeError('Feature {} is not present in the ' + \
+                                       'dataset'.format(feature))
+                    
+            # Convert feature data to numpy array to compute statistics.
+            features_numpy = df[features].to_numpy() 
+            self._features_stats = {'mean': features_numpy.mean(0), 
+                                    'stddev': features_numpy.std(0)}
+        else:
+            self._features_stats = features_stats
 
+    def __len__(self) -> int:
+        return len(self._event_set)
+
+    def __getitem__(self, i:int) -> tuple:
+        """Get item from Events Dataset. 
+
+        Args:
+            i (int): Index of item to retrieve (CDM index).
+
+        Returns:
+            tuple: Tuple containing two tensors:
+             - First item contains the feature values normalized. Dimensions 
+                vary depending on the method used to retrieve the data:
+                  + Single item (from Dataset): (max_event_length, features)
+                  + Batch of items (DataLoader): (batch_size, max_event_length, 
+                  features)
+             - Second item stores the number of the CDM objects the event 
+                contains. This item is required for packing padded tensor and 
+                optimize computing. Dimensions  vary depending on the method 
+                used to retrieve the data:
+                  + Single item (from Dataset): (max_event_length, 1)
+                  + Batch of items (DataLoader): (batch_size, max_event_length, 1)
+        """
+        
+        # Get event object from the set.
+        event = self._event_set[i]
+        
+        # Initialize tensors with zeros and shape (max_event_length, n_features).
+        # This tensor forces all events to have the same number of CDMs by using
+        # the internal variable _max_event_length. It basically creates a padded
+        # tensor, which helps to do batch processing with the DataLoader class.
+        x = torch.zeros(self._max_event_length, self._features_length)
+        
+        # Iterate over all CDM objects in the event i and apply standard 
+        # normalization (x - mean)/(std + epsilon). Note: A constant epsilon
+        # is introduced to remove value errors caused by division by zero.
+        epsilon = 1e-8
+        for i, cdm in enumerate(event):
+
+            # Initialize list to store normalized values for every feature in a
+            # given CDM.
+            norm_values = []
+
+            for j, feature in enumerate(self._features):
+                # Get mean and standard deviation per feature.
+                feature_mean = self._features_stats['mean'][j]
+                feature_stddev = self._features_stats['stddev'][j]
+                
+                # Append normalized values from feature to the list.
+                norm_values += [(cdm[feature] - feature_mean)/
+                                (feature_stddev + epsilon)]
+                
+            # Add normalized values from all features to the output tensor.
+            x[i] = torch.tensor(norm_values)
+
+        return x, torch.tensor(len(event))
+    
 #%% CLASS: EventsPlotting
 class EventsPlotting():
 

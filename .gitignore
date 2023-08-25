@@ -4,6 +4,8 @@
 ### Data folders ###
 data/
 images/
+models/
+nbtemp/
 
 ### Private files ###
 private-*
