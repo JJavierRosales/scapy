@@ -194,7 +194,9 @@ class ConjunctionEventForecaster(nn.Module):
 
 
     def plot_loss(self, filepath:str = None, figsize:tuple = (6, 3), 
-                  log_scale:bool = False, plot_lr:bool=False) -> None:
+                  log_scale:bool = False, validation_only:bool=False, 
+                  plot_lr:bool=False, label:str = None,
+                  ax:plt.Axes = None, return_ax:bool = False) -> None:
         """Plot RNN loss in the training set (orange) and validation set (blue) 
         vs number of iterations during model training.
 
@@ -213,22 +215,27 @@ class ConjunctionEventForecaster(nn.Module):
         # small.
         iterations = self._learn_results['total_iterations']
 
-        train_loss = self._learn_results['training_loss']
-        train_loss = pd.Series(np.log(train_loss) if log_scale else train_loss, 
-                            iterations).drop_duplicates(keep='first')
-
-        valid_loss = self._learn_results['validation_loss']
-        valid_loss = pd.Series(np.log(valid_loss) if log_scale else valid_loss, 
-                               iterations).drop_duplicates(keep='first')
         
-        # Initialize plot object.
-        fig, ax = plt.subplots(figsize = figsize)
+        # Create axes instance if not passed as a parameter.
+        if ax is None: fig, ax = plt.subplots(figsize=figsize)
 
-        # Plot training loss vs iterations.
-        ax.plot(train_loss, label='Training', color='tab:orange')
+        # Plot loss vs iterations.
+        # colors = ['tab:orange', 'tab:blue']
+
+        for p, process in enumerate(['training', 'validation']):
+
+            if process=='training' and validation_only: continue
+
+            loss = self._learn_results[f'{process}_loss']
+            loss = pd.Series(np.log(loss) if log_scale else loss, 
+                                iterations).drop_duplicates(keep='first')
+
+            ax.plot(loss, 
+                    label = process.capitalize() if label is None else label)
+
+            # Set X-axis limits.
+            if process=='validation': ax.set_xlim(0, loss.index.max())
         
-        # Plot validation loss vs iterations.
-        ax.plot(valid_loss, label='Validation', color='tab:blue')
 
         # Plot learning rate if required
         if plot_lr:
@@ -244,8 +251,7 @@ class ConjunctionEventForecaster(nn.Module):
             ax_lr.set_ylim(0, lr.max()*1.25)
             ax_lr.plot(lr, label='Learning rate', color = 'tab:green')
         
-        # Set X-axis limits.
-        ax.set_xlim(0, valid_loss.index.max())
+
 
         # Set axes labels.
         ax.set_xlabel('Number of iterations')
@@ -260,11 +266,14 @@ class ConjunctionEventForecaster(nn.Module):
             print('Plotting to file: {}'.format(filepath))
             fig.savefig(filepath)
 
+        if return_ax:
+            return ax
+
     def learn(self, event_set:list, epochs:int = 2, lr:float = 1e-3, 
               batch_size:int = 8, device:str = None, 
               valid_proportion:float = 0.15, num_workers:int = 4, 
-              event_samples_for_stats:int = 250, filepath_model:str = None, 
-              **kwargs) -> None:
+              event_samples_for_stats:int = 250, filepath_model:str = None,
+              epoch_step_checkpoint:int = None, **kwargs) -> None:
         """Train RNN model.
 
         Args:
@@ -284,6 +293,9 @@ class ConjunctionEventForecaster(nn.Module):
             Defaults to 250.
             filepath_model (str, optional): Filepath for the model 
             to be saved. If None, model is not saved. Defaults to None.
+            epoch_step_checkpoint (int, optional): Number of epochs to process 
+            before saving a new checkpoint. Only applicable if filepath_model is
+            not None. Defaults to None.
 
         Raises:
             ValueError: valid_proportion is not in the range (0, 1).
@@ -373,7 +385,7 @@ class ConjunctionEventForecaster(nn.Module):
         if filepath_model is not None and os.path.exists(filepath_model):
             self.load(filepath_model)
             self.optimizer.param_groups[0]['lr'] = lr
-            print('\nModel parameters loaded from {}:\n'
+            print('\nModel parameters loaded from {}\n'
                   ' - Total epochs       = {}\n'
                   ' - Total iterations   = {}\n'
                   ' - Validation loss    = {:6.4e}\n'
@@ -438,8 +450,6 @@ class ConjunctionEventForecaster(nn.Module):
                     self._loss = self.criterion(output, target)
                     valid_loss = float(self._loss)
 
-
-                    
             # Iterate over all batches containes in the training loader. Every 
             # batch (t_batch) contains an equal number of events which in 
             # turn may contain a different number of CDM objects.
@@ -506,6 +516,18 @@ class ConjunctionEventForecaster(nn.Module):
                 self._learn_results['learning_rate'].append(lr)
                 self._learn_results['batch_size'].append(batch_size)
 
+                if epoch_step_checkpoint is not None and \
+                   ((epoch+1) % epoch_step_checkpoint) == 0 and \
+                    (epoch+1) < epochs:
+                    pb_epochs.refresh(i = relative_iters, 
+                                  description = 'Saving checkpoint...',
+                                  nested_progress = True)
+                    self.save(filepath = filepath_model)
+                    pb_epochs.refresh(i = relative_iters, 
+                                      description = description,
+                                      nested_progress = True)
+                    
+
         # Print message at the end of the mini batch.
         pb_epochs.refresh(i = relative_iters, description = description)
 
@@ -547,6 +569,8 @@ class ConjunctionEventForecaster(nn.Module):
             torch_file = torch.load(filepath)
 
             self.load_state_dict(torch_file['model'])
+            if not hasattr(self, 'optimizer'):
+                self.optimizer = optim.Adam(self.parameters(), lr = 1e-3)
             self.optimizer.load_state_dict(torch_file['optimizer'])
             self._loss = torch_file['loss']
             self._learn_results = torch_file['learn_results']
@@ -671,7 +695,7 @@ class ConjunctionEventForecaster(nn.Module):
             
 
     def predict_event(self, event:CE, num_samples:int = 1, 
-        max_length:int = 22) -> Union[CE, CED]:
+        max_length:int = None) -> Union[CE, CED]:
         """Forecast the evolution of a given Conjunction Event by predicting 
         upcoming CDMs until TCA.
 
@@ -680,7 +704,7 @@ class ConjunctionEventForecaster(nn.Module):
             num_samples (int, optional): Number of possible CDMs considered in 
             every forecasting step. Defaults to 1.
             max_length (int, optional): Maximum number of CDM objects contained 
-            in the event object. Defaults to 22.
+            in the event object. Defaults to None.
 
         Returns:
             Union[ConjunctionEvent, ConjunctionEventsDataset]: Two possible 
@@ -691,6 +715,9 @@ class ConjunctionEventForecaster(nn.Module):
                 containing all possible evolutions of the event (combinations of 
                 CDMs).
         """
+
+        if max_length is not None and max_length<len(event):
+            max_length = len(event)+1
 
         # Initialize list to store Conjunction Events.
         events = []
@@ -756,7 +783,7 @@ class ConjunctionEventForecaster(nn.Module):
             h = h.to(self._device)
             c = c.to(self._device)
             
-            self.hidden[module_name] = (h, c)
+            self.hidden[module_name] = (h.squeeze(0), c.squeeze(0))
 
 
     def forward(self, x:torch.Tensor, x_lengths:torch.IntTensor) -> torch.Tensor:
@@ -776,7 +803,7 @@ class ConjunctionEventForecaster(nn.Module):
 
         # Iterate over all modules to perform the forward operation.
         for module_name, module in self.model.items():
-            
+
             if 'lstm' in module_name:
 
                 # Get size of inputs tensor.
