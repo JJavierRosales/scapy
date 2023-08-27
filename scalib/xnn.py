@@ -220,7 +220,7 @@ class ConjunctionEventForecaster(nn.Module):
         if ax is None: fig, ax = plt.subplots(figsize=figsize)
 
         # Plot loss vs iterations.
-        # colors = ['tab:orange', 'tab:blue']
+        colors = ['tab:orange', 'tab:blue']
 
         for p, process in enumerate(['training', 'validation']):
 
@@ -230,7 +230,7 @@ class ConjunctionEventForecaster(nn.Module):
             loss = pd.Series(np.log(loss) if log_scale else loss, 
                                 iterations).drop_duplicates(keep='first')
 
-            ax.plot(loss, 
+            ax.plot(loss, color = colors[p], 
                     label = process.capitalize() if label is None else label)
 
             # Set X-axis limits.
@@ -507,6 +507,7 @@ class ConjunctionEventForecaster(nn.Module):
                 pb_epochs.refresh(i = relative_iters, 
                                   description = description,
                                   nested_progress = True)
+                
 
                 # Save training information.
                 self._learn_results['total_iterations'].append(total_iters)
@@ -775,15 +776,22 @@ class ConjunctionEventForecaster(nn.Module):
         self.hidden = {}
 
         for module_name, module in self.model.items():
-            if not 'lstm' in module_name: continue
+            if 'lstm' in module_name:
 
-            h = torch.zeros(module.num_layers, batch_size, module.hidden_size)
-            c = torch.zeros(module.num_layers, batch_size, module.hidden_size)
+                h = torch.zeros(module.num_layers, batch_size, module.hidden_size)
+                c = torch.zeros(module.num_layers, batch_size, module.hidden_size)
 
-            h = h.to(self._device)
-            c = c.to(self._device)
-            
-            self.hidden[module_name] = (h.squeeze(0), c.squeeze(0))
+                h = h.to(self._device)
+                c = c.to(self._device)
+                
+                self.hidden[module_name] = (h.squeeze(0), c.squeeze(0))
+            elif 'gru' in module_name:
+
+                h = torch.zeros(module.num_layers, batch_size, module.hidden_size)
+                h = h.to(self._device)
+                
+                self.hidden[module_name] = h.squeeze(0)
+
 
 
     def forward(self, x:torch.Tensor, x_lengths:torch.IntTensor) -> torch.Tensor:
@@ -804,10 +812,10 @@ class ConjunctionEventForecaster(nn.Module):
         # Iterate over all modules to perform the forward operation.
         for module_name, module in self.model.items():
 
-            if 'lstm' in module_name:
+            if ('lstm' in module_name) or ('gru' in module_name):
 
                 # Get size of inputs tensor.
-                batch_size, x_length_max, n_features = x.size()
+                # batch_size, x_length_max, n_features = x.size()
 
                 # All events are padded with zeros in order to get the same 
                 # number of tensors, and therefore same event_length. This makes 
@@ -825,9 +833,9 @@ class ConjunctionEventForecaster(nn.Module):
                 #                          lengths = x_lengths, 
                 #                          batch_first = module.batch_first, 
                 #                          enforce_sorted = False)
-
+                
                 x, self.hidden[module_name] = module(x, self.hidden[module_name])
-
+                
                 # # Pads a packed batch of variable length sequences from LSTM layer.
                 # x, _ = pad_packed_sequence(sequence = x, 
                 #                            batch_first = module.batch_first, 
@@ -835,7 +843,7 @@ class ConjunctionEventForecaster(nn.Module):
                 
             else:
                 x = module(x)
-            
+
         return x
     
     def __hash__(self):

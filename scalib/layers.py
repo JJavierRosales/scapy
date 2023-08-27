@@ -70,8 +70,8 @@ class SelfAttentionLayer(nn.Module):
 
         return attn_output[0]
     
-#%% CLASS: LSTMLayer
-class LSTMLayer(nn.Module):
+#%% CLASS: RNNLayer
+class RNNLayer(nn.Module):
     """Layer constructor for LSTM based RNN architecture.
     """
 
@@ -87,7 +87,7 @@ class LSTMLayer(nn.Module):
             constructor receives the additional parameter 'version').
         """
     
-        super(LSTMLayer, self).__init__()
+        super(RNNLayer, self).__init__()
 
         # Initialize inputs and hidden sizes
         self.input_size = input_size
@@ -100,7 +100,7 @@ class LSTMLayer(nn.Module):
                          hidden_size = hidden_size, 
                          **cell_args)
 
-    def forward(self, input: torch.TensorFloat, state:tuple) -> tuple:
+    def forward(self, input: torch.TensorFloat, state:Union[tuple,torch.Tensor]) -> tuple:
         """Forward operation through all time steps of a given input.
 
         Args:
@@ -165,11 +165,11 @@ class LSTM(nn.Module):
         super(LSTM, self).__init__()
         
         # Get all LSTM layers in a list using the LSTMLayer constructor.
-        layers = [LSTMLayer(cell = cell, 
+        layers = [RNNLayer(cell = cell, 
                             input_size = input_size, 
                             hidden_size = hidden_size, 
                             **cell_args)] + \
-                 [LSTMLayer(cell = cell, 
+                 [RNNLayer(cell = cell, 
                             input_size = hidden_size, 
                             hidden_size = hidden_size, 
                             **cell_args) for _ in range(num_layers - 1)]
@@ -267,7 +267,7 @@ class LSTM(nn.Module):
         # Initialize input layer tensor (tensor to be passed first to the layer
         # whose input_size is the input number of features)
         input_layer = input
-
+        
         for i, layer in enumerate(self.layers):
 
             # Get the hidden states tensor at layer i:
@@ -308,7 +308,7 @@ class LSTM(nn.Module):
                     # Get the batch states for the layer i
                     batch_state = (torch.squeeze(hstate[b]), 
                                    torch.squeeze(cstate[b]))
-
+                    
                     # Get the output and states of the layer for the batch b
                     batch_output, batch_state = layer.forward(batch_input, 
                                                               batch_state)
@@ -348,7 +348,209 @@ class LSTM(nn.Module):
                                 else output_hstates[0]
         cstates = torch.stack(output_cstates) if self.num_layers > 1 \
                                 else output_cstates[0]
-        
+
         # Return the outputs of the LSTM and the hidden states for every LSTM 
         # layer.
         return output_layer, (hstates, cstates)
+
+    
+#%% CLASS: GRU
+class GRU(nn.Module):
+    """Adapted nn.GRU class that allows the use of custom GRU cells.
+    """
+    def __init__(self, input_size:int, hidden_size:int, cell, 
+        batch_first:bool=True, num_layers:int=1, 
+        dropout:float=0.0, **cell_args:dict) -> None:
+        """Initialize adapted LSTM class.
+
+        Args:
+            input_size (int): Number of input features.
+            hidden_size (int): Number of hidden neurons (outputs of the LSTM).
+            cell (constructor): LSTM cell constructor.
+            num_layers (int, optional): Number of stacked LSTM layers (LSTM 
+            depth). Defaults to 1.
+            dropout (float, optional): Dropout probability to use 
+            between consecutive LSTM layers. Only applicable if num_layers is 
+            greater than 1. Defaults to None.
+        """
+    
+        super(GRU, self).__init__()
+        
+        # Get all GRU layers in a list using the RNNLayer constructor.
+        layers = [RNNLayer(cell = cell, 
+                           input_size = input_size, 
+                           hidden_size = hidden_size, 
+                           **cell_args)] + \
+                 [RNNLayer(cell = cell, 
+                           input_size = hidden_size, 
+                           hidden_size = hidden_size, 
+                           **cell_args) for _ in range(num_layers - 1)]
+        
+        # Set network dimensions
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        
+        # Set batch_first parameter
+        self.batch_first = batch_first
+        self._batched = None
+        
+        # Convert list of LSTM layers to list of nn.Modules.
+        self.layers = nn.ModuleList(layers)
+        
+        # Introduces a Dropout layer on the outputs of each LSTM layer except
+        # the last layer.
+        self.num_layers = num_layers
+
+        # If number of LSTM layers is 1 and the dropout_probability provided is
+        # not None, print warning to the user.
+        if num_layers == 1 and dropout > 0:
+            warnings.warn(
+                "Dropout parameter in LSTM class adds dropout layers after " 
+                "all but last recurrent layer. It expects num_layers greater "
+                "> 1, but got num_layers = 1."
+            )
+        
+        # If dropout_probability is provided initialize Dropout Module. 
+        if dropout > 0 and num_layers > 1:
+            self.dropout_layer = nn.Dropout(p = dropout)
+        else:
+            self.dropout_layer = None
+
+
+    def forward(self, input: torch.Tensor, states: torch.Tensor) -> tuple:
+        """Forward operation through all time steps of a given input and all 
+        GRU layers.
+
+        Args:
+            input (torch.Tensor): Tensor of shape (seq_length, hidden_size) 
+            if unbatched, (batch_size, seq_length, hidden_size) if batched and 
+            batch_first = True, or (seq_length, batch_size, hidden_size) if 
+            batched and batch_first = False. It containins the values at 
+            every time step of a sequence.
+            state (torch.Tensor): Tensor of shape (num_layers, hidden_size) 
+            if input is unbatched, or (num_layers, batch_size, hidden_size) if 
+            batched. It contains tensors of every GRU layer with the previous 
+            hidden state (at time t-1) required to produce the next output for 
+            the layer.
+
+        Returns:
+            tuple: Tuple with two values:
+                - outputs (torch.Tensor): Tensor of shape (seq_length, 
+                hidden_size) for unbatched input, (batch_size, seq_length, 
+                hidden_size) for batched input if batch_first = True, or 
+                (seq_length, batch_size, hidden_size) for batched input if 
+                batch_first = False. It contains the forecasted values of X for 
+                the next time step (ht ~ Xt+1).
+                - states (tuple): Tuple with two tensors with shape: 
+                    + output: Tensor with shape (num_layers, hidden_size) for 
+                    unbatched input or (num_layers, batch_size, hidden_size) for
+                    batched output. It contains the last hidden state 
+                    (predicted Xt+1 value) 
+                    + h_t: Tensor with shape (num_layers, hidden_size) 
+                    for unbatched input or (num_layers, batch_size, hidden_size) 
+                    for batched output. It contains the hidden state required to 
+                    produce the next prediction of the layer.
+        """
+
+        if (self._batched is None) and \
+            (isinstance(input, torch.nn.utils.rnn.PackedSequence) or \
+            (isinstance(input, torch.Tensor) and len(input.size())==3)):
+            self._batched = True
+    
+        if self._batched:
+            # Input tensor is batched
+            if self.batch_first:
+                batch_size, seq_length, _ = input.size()
+            else:
+                seq_length, batch_size, _ = input.size()
+        else:
+            # Input tensor is unbatched.
+            seq_length, _ = input.size()
+
+        # Initialize list to store the hidden state required for the next output
+        # prediction
+        output_hstates = []
+
+        # Initialize input layer tensor (tensor to be passed first to the layer
+        # whose input_size is the input number of features)
+        input_layer = input
+        
+        for i, layer in enumerate(self.layers):
+
+            # Get the hidden states tensor at layer i:
+            #  - batched=True -> (num_layers, batch_size, hidden_size)
+            #  - batched=False -> (num_layers, hidden_size)
+
+            hstate = states[i] if self.num_layers > 1 else states
+
+            
+            # If inputs are batched, iterate over all batches.
+            if self._batched:
+
+                # Initialize output_layer with the dimensions of the outputs 
+                # from the layer.
+                if self.batch_first:
+                    output_layer = torch.zeros((batch_size, 
+                                                seq_length, 
+                                                layer.hidden_size))
+                else:
+                    output_layer = torch.zeros((seq_length,
+                                                batch_size,  
+                                                layer.hidden_size))
+
+                # Initialize tensor to keep the states returned at the end of 
+                # the sequence processing in every batch b.
+                out_hstate = torch.zeros((batch_size, layer.hidden_size))
+
+
+                # Iterate through all batches- to get the output and states per 
+                # batch.
+                for b in range(batch_size):
+
+                    # Get the batch input tensor b for the layer i depending on 
+                    # the shape of the input tensor.
+                    batch_input = input_layer[b, :, :] if self.batch_first \
+                        else torch.squeeze(input_layer[:, b, :], dim = 1)
+                    
+                    # Get the batch states for the layer i
+                    batch_state = torch.squeeze(hstate[b])
+                    
+                    # Get the output and states of the layer for the batch b
+                    batch_output, batch_state = layer.forward(batch_input, 
+                                                              batch_state)
+
+                    # Save batch output depending on the inputs shape.              
+                    if self.batch_first:
+                        output_layer[b, :, :] = batch_output
+                    else:
+                        output_layer[:, b, :] = batch_output
+
+                    # Keep last cell state of the sequence for batch b and i 
+                    # layer.
+                    out_hstate[b] = batch_state
+
+            else:
+
+                # Keep last cell state of sequence
+                output_layer, out_hstate = layer(input_layer, hstate)
+
+                
+            # Apply the dropout layer except the last layer
+            if (i < self.num_layers - 1) and not (self.dropout_layer is None):
+                output_layer = self.dropout_layer(output_layer)
+
+            # Redefine input_layer tensor from the output of previous layer.
+            input_layer = output_layer
+
+            # Add last states from squences (and from all batches if input is 
+            # batched) to final list.    
+            output_hstates += [out_hstate]
+
+        # Convert lists to tensors 
+        hstates = torch.stack(output_hstates) if self.num_layers > 1 \
+                                else output_hstates[0]
+
+        
+        # Return the outputs of the LSTM and the hidden states for every LSTM 
+        # layer.
+        return output_layer, hstates
