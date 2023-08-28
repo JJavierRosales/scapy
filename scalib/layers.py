@@ -4,9 +4,6 @@ from typing import Union
 
 import torch
 import torch.nn as nn
-import torch.optim as optim
-from torch.utils.data import Dataset, DataLoader
-from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
 import warnings
 
@@ -88,10 +85,6 @@ class RNNLayer(nn.Module):
         """
     
         super(RNNLayer, self).__init__()
-
-        # Initialize inputs and hidden sizes
-        self.input_size = input_size
-        self.hidden_size = hidden_size
         
         # Initialize cell attribute in class witht the LSTM cell object 
         # initialized.
@@ -99,6 +92,11 @@ class RNNLayer(nn.Module):
         self.cell = cell(input_size = input_size, 
                          hidden_size = hidden_size, 
                          **cell_args)
+        
+        # Initialize inputs and hidden sizes
+        self.input_size = self.cell.input_size
+        self.hidden_size = self.cell.hidden_size
+        
 
     def forward(self, input: torch.TensorFloat, state:Union[tuple,torch.Tensor]) -> tuple:
         """Forward operation through all time steps of a given input.
@@ -118,7 +116,6 @@ class RNNLayer(nn.Module):
                     (cell context) required to produce the next prediction.
         """
 
-        
     
         # Remove tensor dimension from inputs.
         inputs = input.unbind(0)
@@ -380,15 +377,16 @@ class GRU(nn.Module):
         layers = [RNNLayer(cell = cell, 
                            input_size = input_size, 
                            hidden_size = hidden_size, 
-                           **cell_args)] + \
-                 [RNNLayer(cell = cell, 
-                           input_size = hidden_size, 
-                           hidden_size = hidden_size, 
+                           **cell_args)]
+        
+        layers += [RNNLayer(cell = cell, 
+                           input_size = layers[0].hidden_size, 
+                           hidden_size = layers[0].hidden_size, 
                            **cell_args) for _ in range(num_layers - 1)]
         
         # Set network dimensions
-        self.input_size = input_size
-        self.hidden_size = hidden_size
+        self.input_size = layers[0].input_size
+        self.hidden_size = layers[0].hidden_size
         
         # Set batch_first parameter
         self.batch_first = batch_first
@@ -405,8 +403,8 @@ class GRU(nn.Module):
         # not None, print warning to the user.
         if num_layers == 1 and dropout > 0:
             warnings.warn(
-                "Dropout parameter in LSTM class adds dropout layers after " 
-                "all but last recurrent layer. It expects num_layers greater "
+                "\nDropout parameter in LSTM class adds dropout layers after " 
+                "all but last recurrent layer. \nIt expects num_layers greater "
                 "> 1, but got num_layers = 1."
             )
         
@@ -427,7 +425,7 @@ class GRU(nn.Module):
             batch_first = True, or (seq_length, batch_size, hidden_size) if 
             batched and batch_first = False. It containins the values at 
             every time step of a sequence.
-            state (torch.Tensor): Tensor of shape (num_layers, hidden_size) 
+            states (torch.Tensor): Tensor of shape (num_layers, hidden_size) 
             if input is unbatched, or (num_layers, batch_size, hidden_size) if 
             batched. It contains tensors of every GRU layer with the previous 
             hidden state (at time t-1) required to produce the next output for 
@@ -441,15 +439,10 @@ class GRU(nn.Module):
                 (seq_length, batch_size, hidden_size) for batched input if 
                 batch_first = False. It contains the forecasted values of X for 
                 the next time step (ht ~ Xt+1).
-                - states (tuple): Tuple with two tensors with shape: 
-                    + output: Tensor with shape (num_layers, hidden_size) for 
-                    unbatched input or (num_layers, batch_size, hidden_size) for
-                    batched output. It contains the last hidden state 
-                    (predicted Xt+1 value) 
-                    + h_t: Tensor with shape (num_layers, hidden_size) 
-                    for unbatched input or (num_layers, batch_size, hidden_size) 
-                    for batched output. It contains the hidden state required to 
-                    produce the next prediction of the layer.
+                - states (torch.Tensor): Tensor with shape (num_layers, 
+                hidden_size) for unbatched input or (num_layers, batch_size, 
+                hidden_size) for batched output. It contains the hidden state 
+                required to produce the next prediction of the layer.
         """
 
         if (self._batched is None) and \
@@ -476,14 +469,12 @@ class GRU(nn.Module):
         input_layer = input
         
         for i, layer in enumerate(self.layers):
-
-            # Get the hidden states tensor at layer i:
-            #  - batched=True -> (num_layers, batch_size, hidden_size)
-            #  - batched=False -> (num_layers, hidden_size)
-
+            
+            # Get the hidden state tensor at layer i:
+            #  - batched = True -> (num_layers, batch_size, hidden_size)
+            #  - batched = False -> (num_layers, hidden_size)
             hstate = states[i] if self.num_layers > 1 else states
 
-            
             # If inputs are batched, iterate over all batches.
             if self._batched:
 
@@ -549,8 +540,7 @@ class GRU(nn.Module):
         # Convert lists to tensors 
         hstates = torch.stack(output_hstates) if self.num_layers > 1 \
                                 else output_hstates[0]
-
         
-        # Return the outputs of the LSTM and the hidden states for every LSTM 
+        # Return the outputs of the LSTM and the hidden states for every GRU 
         # layer.
         return output_layer, hstates

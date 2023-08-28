@@ -5,6 +5,8 @@ from typing import Union
 import torch
 from torch import nn
 
+import warnings
+
 
 # AI Summer link: https://theaisummer.com/understanding-lstm/
 # Github Pytorch: https://github.com/pytorch/examples/tree/main/time_sequence_prediction
@@ -52,7 +54,7 @@ class LSTM_Vanilla(nn.Module):
         
             # Initialize gate weights (Wxg) that will process inputs at time t.
             # Gate component computation = Wxg * xt
-            setattr(self,'gate_{}_x'.format(gate),
+            setattr(self,f'gate_{gate}_x',
                 nn.Linear(in_features = self.input_size, 
                           out_features = self.hidden_size, 
                           bias = True))
@@ -60,7 +62,7 @@ class LSTM_Vanilla(nn.Module):
             # Initialize gate weights (Whg) that will process hidden states at 
             # time t-1, including bias associated to the gate.
             # Gate component computation = h[t-1]*Whg + bg
-            setattr(self,'gate_{}_h'.format(gate),
+            setattr(self,f'gate_{gate}_h',
                 nn.Linear(in_features = self.hidden_size, 
                           out_features = self.hidden_size, 
                           bias = True))
@@ -176,13 +178,13 @@ class LSTM_SLIMX(nn.Module):
         SLIM2 - Gates contain only weights for hidden states (Wh).
         SLIM3 - Gates contain only learnable bias (b).
     """
-    def __init__(self, input_size:int, hidden_size:int, slim_version:int = 1) -> None:
+    def __init__(self, input_size:int, hidden_size:int, version:int = 1) -> None:
         """Initialize LSTM SLIM cell class.
 
         Args:
             input_size (int): Number of inputs.
             hidden_size (int): Number of hidden cells (outputs of the LSTM).
-            slim_version (int, optional): Version of the cell architecture to 
+            version (int, optional): Version of the cell architecture to 
             use. Three versions are available:
                 1 - Gates contain hidden states components and bias (Wh + b).
                 2 - Gates contain only weights for hidden states (Wh).
@@ -195,7 +197,7 @@ class LSTM_SLIMX(nn.Module):
         # Initialize inputs and hidden sizes
         self.input_size = input_size
         self.hidden_size = hidden_size
-        self._version = slim_version
+        self._version = version
 
         # Initialize activation functions
         self._sigmoid = nn.Sigmoid()
@@ -210,7 +212,7 @@ class LSTM_SLIMX(nn.Module):
             if gate=='cell':
                 # Initialize gate weights (Wxc) that will process inputs at t.
                 # Gate component computation = Wxc * xt + bc
-                setattr(self,'gate_{}_x'.format(gate),
+                setattr(self,f'gate_{gate}_x',
                     nn.Linear(in_features = self.input_size, 
                               out_features = self.hidden_size, 
                               bias = True))
@@ -218,27 +220,27 @@ class LSTM_SLIMX(nn.Module):
                 # Initialize gate weights (Whc) that will process hidden states  
                 # at time t-1, including bias associated to the gate.
                 # Gate component computation = h[t-1]*Whc.
-                setattr(self,'gate_{}_h'.format(gate),
+                setattr(self,f'gate_{gate}_h',
                     nn.Linear(in_features = self.hidden_size, 
                               out_features = self.hidden_size, 
                               bias = False))
             else:
         
                 # If SLIM1 or SLIM2, initialize gate weight components.
-                if slim_version<=2:
+                if version<=2:
                     # Initialize gate components that will process hidden 
                     # states at time t-1, including bias associated to the gate 
                     # if SLIM1.
                     # Gate component computation = h[t-1]*Whg + <bg>
-                    setattr(self,'gate_{}_h'.format(gate),
+                    setattr(self,f'gate_{gate}_h',
                         nn.Linear(in_features = self.hidden_size, 
                                   out_features = self.hidden_size, 
-                                  bias = True if slim_version == 1 else False))
+                                  bias = True if version == 1 else False))
                 else:
                                   
                     # Initialize gate bias (bg) that will process hidden states 
                     # at t-1.
-                    setattr(self, 'gate_{}_h'.format(gate), 
+                    setattr(self, f'gate_{gate}_h', 
                             BiasLayer(self.hidden_size))
                 
 
@@ -277,7 +279,7 @@ class LSTM_SLIMX(nn.Module):
             raise ValueError('Gate () not defined.'.format(gate))
             
         # Get gate components for the hidden states at t-1.
-        h = getattr(self,'gate_{}_h'.format(gate))(h)
+        h = getattr(self,f'gate_{gate}_h')(h)
         
         
         if gate=='cell':
@@ -289,7 +291,7 @@ class LSTM_SLIMX(nn.Module):
             # In the SLIM architecture, only the cell gate received the values 
             # from the inputs. Therefore weights are only initialized for this 
             # gate.
-            x = getattr(self,'gate_{}_x'.format(gate))(x)
+            x = getattr(self,f'gate_{gate}_x')(x)
             
             # New information part that will be injected in the new context 
             g = self._tanh(x + h) * input_gate
@@ -373,7 +375,7 @@ class LSTM_NXG(nn.Module):
         
             # Initialize gate weights (Wxg) that will process inputs at time t.
             # Gate component computation = Wxg * xt
-            setattr(self,'gate_{}_x'.format(gate),
+            setattr(self,f'gate_{gate}_x',
                 nn.Linear(in_features = self.input_size, 
                           out_features = self.hidden_size, 
                           bias = True))
@@ -381,7 +383,7 @@ class LSTM_NXG(nn.Module):
             # Initialize gate weights (Whg) that will process hidden states at 
             # time t-1, including bias associated to the gate.
             # Gate component computation = h[t-1]*Whg + bg
-            setattr(self,'gate_{}_h'.format(gate),
+            setattr(self,f'gate_{gate}_h',
                 nn.Linear(in_features = self.hidden_size, 
                           out_features = self.hidden_size, 
                           bias = True))
@@ -400,8 +402,8 @@ class LSTM_NXG(nn.Module):
             raise ValueError('Gate () not defined.'.format(gate))
         
         # Get gate components for the input x and hidden states h.
-        x = getattr(self,'gate_{}_x'.format(gate))(x)
-        h = getattr(self,'gate_{}_h'.format(gate))(h)
+        x = getattr(self,f'gate_{gate}_x')(x)
+        h = getattr(self,f'gate_{gate}_h')(h)
         
         if gate=='cell':
             
@@ -475,7 +477,7 @@ class LSTM_NXGAF(nn.Module):
         
             # Initialize gate weights (Wxg) that will process inputs at time t.
             # Gate component computation = Wxg * xt
-            setattr(self,'gate_{}_x'.format(gate),
+            setattr(self,f'gate_{gate}_x',
                 nn.Linear(in_features = self.input_size, 
                           out_features = self.hidden_size, 
                           bias = True))
@@ -483,7 +485,7 @@ class LSTM_NXGAF(nn.Module):
             # Initialize gate weights (Whg) that will process hidden states at 
             # time t-1, including bias associated to the gate.
             # Gate component computation = h[t-1]*Whg + bg
-            setattr(self,'gate_{}_h'.format(gate),
+            setattr(self,f'gate_{gate}_h',
                 nn.Linear(in_features = self.hidden_size, 
                           out_features = self.hidden_size, 
                           bias = True))
@@ -499,8 +501,8 @@ class LSTM_NXGAF(nn.Module):
             raise ValueError('Gate () not defined.'.format(gate))
         
         # Get gate components for the input x and hidden states h.
-        x = getattr(self,'gate_{}_x'.format(gate))(x)
-        h = getattr(self,'gate_{}_h'.format(gate))(h)
+        x = getattr(self,f'gate_{gate}_x')(x)
+        h = getattr(self,f'gate_{gate}_h')(h)
         
         if gate=='cell':
             
@@ -575,7 +577,7 @@ class GRU_Vanilla(nn.Module):
         
             # Initialize gate weights (Wxg) that will process inputs at time t.
             # Gate component computation = Wxg * xt
-            setattr(self,'gate_{}_x'.format(gate),
+            setattr(self,f'gate_{gate}_x',
                 nn.Linear(in_features = self.input_size, 
                           out_features = self.hidden_size, 
                           bias = False))
@@ -583,7 +585,7 @@ class GRU_Vanilla(nn.Module):
             # Initialize gate weights (Whg) that will process hidden states at 
             # time t-1, including bias associated to the gate.
             # Gate component computation = h[t-1]*Whg + bg
-            setattr(self,'gate_{}_h'.format(gate),
+            setattr(self,f'gate_{gate}_h',
                 nn.Linear(in_features = self.hidden_size, 
                           out_features = self.hidden_size, 
                           bias = True))
@@ -592,12 +594,12 @@ class GRU_Vanilla(nn.Module):
     def _forward_gate(self, gate:str, x:torch.TensorFloat, h:torch.TensorFloat, 
             reset_gate:torch.TensorFloat = None) -> torch.TensorFloat:
     
-        # Check gate requested is within LSTM cell arquitecture.
+        # Check gate requested is within GRU cell arquitecture.
         if not gate in ['update','reset','hidden']:
             raise ValueError('Gate () not defined.'.format(gate))
         
         # Get gate components for the input x and hidden states h.
-        x = getattr(self,'gate_{}_x'.format(gate))(x)
+        x = getattr(self,f'gate_{gate}_x')(x)
         
         if gate=='hidden':
             
@@ -608,32 +610,34 @@ class GRU_Vanilla(nn.Module):
 
             # New information part that will be injected in the new context 
             h_candidate = self._tanh(x + \
-                getattr(self,'gate_{}_h'.format(gate))(reset_gate * h))
+                getattr(self,f'gate_{gate}_h')(reset_gate * h))
 
             return h_candidate
         else:
 
-            h = getattr(self,'gate_{}_h'.format(gate))(h)
+            h = getattr(self,f'gate_{gate}_h')(h)
 
             # Apply sigmoid function to gate.
             return self._sigmoid(x + h)
         
     def forward(self, x:torch.TensorFloat, h_prev:torch.TensorFloat) -> tuple:
-            
+        
+
         # Get outputs from update gate.
         u = self._forward_gate(gate = 'update', x = x, h = h_prev)
-        
+
+
         # Get outputs from reset gate.
         r = self._forward_gate(gate = 'reset', x = x, h = h_prev)
-        
+
         # Get candidate hidden state.
         h_candidate = self._forward_gate(gate = 'hidden', x = x, h = h_prev, 
-                                    relevance_gate = r)
-        
+                                    reset_gate = r)
+
         # Produce next hidden output
         h_next = (1 - u) * h_prev + u * h_candidate
-        
-        return h_next
+
+        return h_next, h_next
 
 #%% GRU SLIMX (X = 1, 2 OR 3) CELL ARCHITECTURE
 class GRU_SLIMX(nn.Module):
@@ -646,14 +650,14 @@ class GRU_SLIMX(nn.Module):
         SLIM2 - Gates contain only weights for hidden states (Wh).
         SLIM3 - Gates contain only learnable bias (b).
     """
-    def __init__(self, input_size:int, hidden_size:int, slim_version:int = 1) -> None:
+    def __init__(self, input_size:int, hidden_size:int, version:int=1) -> None:
 
         super(GRU_SLIMX, self).__init__()
         
         # Initialize inputs and hidden sizes
         self.input_size = input_size
         self.hidden_size = hidden_size
-        self._version = slim_version
+        self._version = version
 
         # Initialize activation functions
         self._sigmoid = nn.Sigmoid()
@@ -663,17 +667,17 @@ class GRU_SLIMX(nn.Module):
         for gate in ['update','reset', 'hidden']:
         
             if gate=='hidden':
-                # Initialize gate weights (Wxg) that will process inputs at time t.
+                # Initialize gate weights (Wxg) that will process inputs at t.
                 # Gate component computation = Wxg * xt
-                setattr(self,'gate_{}_x'.format(gate),
+                setattr(self,f'gate_{gate}_x',
                     nn.Linear(in_features = self.input_size, 
                             out_features = self.hidden_size, 
                             bias = False))
                 
-                # Initialize gate weights (Whg) that will process hidden states at 
-                # time t-1, including bias associated to the gate.
+                # Initialize gate weights (Whg) that will process hidden states 
+                # at time t-1, including bias associated to the gate.
                 # Gate component computation = h[t-1]*Whg + bg
-                setattr(self,'gate_{}_h'.format(gate),
+                setattr(self,f'gate_{gate}_h',
                     nn.Linear(in_features = self.hidden_size, 
                             out_features = self.hidden_size, 
                             bias = True))
@@ -681,50 +685,50 @@ class GRU_SLIMX(nn.Module):
             else:
         
                 # If SLIM1 or SLIM2, initialize gate weight components.
-                if slim_version<=2:
+                if version<=2:
                     # Initialize gate components that will process hidden 
                     # states at time t-1, including bias associated to the gate 
                     # if SLIM1.
                     # Gate component computation = h[t-1]*Whg + <bg>
-                    setattr(self,'gate_{}_h'.format(gate),
+                    setattr(self,f'gate_{gate}_h',
                         nn.Linear(in_features = self.hidden_size, 
                                   out_features = self.hidden_size, 
-                                  bias = True if slim_version == 1 else False))
+                                  bias = True if version == 1 else False))
                 else:
                                   
                     # Initialize gate bias (bg) that will process hidden states 
                     # at t-1.
-                    setattr(self, 'gate_{}_h'.format(gate), BiasLayer())
+                    setattr(self, f'gate_{gate}_h', 
+                            BiasLayer(self.hidden_size))
             
 
     def _forward_gate(self, gate:str, x:torch.TensorFloat, h:torch.TensorFloat, 
             reset_gate:torch.TensorFloat = None) -> torch.TensorFloat:
     
-        # Check gate requested is within LSTM cell arquitecture.
+        # Check gate requested is within GRU cell arquitecture.
         if not gate in ['update','reset','hidden']:
             raise ValueError('Gate () not defined.'.format(gate))
         
-        # Get gate components for the input x and hidden states h.
-        x = getattr(self,'gate_{}_x'.format(gate))(x)
-        
         if gate=='hidden':
+
+            # Get gate components for the input x and hidden states h.
+            x = getattr(self,f'gate_{gate}_x')(x)
             
             # Check input_gate, forget_gate and cell state from t-1 is provided.
             if reset_gate is None or h is None:
-                raise ValueError('Parameter(s) input_gate, forget_gate, ' + \
-                                 'and/or c_prev missing.')
+                raise ValueError('Parameter(s) reset_gate and/or h missing.')
 
             # New information part that will be injected in the new context 
             h_candidate = self._tanh(x + \
-                getattr(self,'gate_{}_h'.format(gate))(reset_gate * h))
+                getattr(self,f'gate_{gate}_h')(reset_gate * h))
 
             return h_candidate
         else:
 
-            h = getattr(self,'gate_{}_h'.format(gate))(h)
+            h = getattr(self,f'gate_{gate}_h')(h)
 
             # Apply sigmoid function to gate.
-            return self._sigmoid(x + h)
+            return self._sigmoid(h)
         
     def forward(self, x:torch.TensorFloat, h_prev:torch.TensorFloat) -> tuple:
             
@@ -736,10 +740,118 @@ class GRU_SLIMX(nn.Module):
         
         # Get candidate hidden state.
         h_candidate = self._forward_gate(gate = 'hidden', x = x, h = h_prev, 
-                                    relevance_gate = r)
+                                    reset_gate = r)
         
         # Produce next hidden output
         h_next = (1 - u) * h_prev + u * h_candidate
         
-        return h_next
+        return h_next, h_next
 
+#%% GRU MUTX (X = 1, 2 OR 3) CELL ARCHITECTURE
+class GRU_MUTX(nn.Module):
+    """
+    Mutation X Gate Recurrent Unit (GRU) cell with update, reset gates and 
+    associated activation functions.
+    """
+    def __init__(self, input_size:int, hidden_size:int, version:int=1) -> None:
+
+        super(GRU_MUTX, self).__init__()
+        
+        # Initialize inputs and hidden sizes
+        self.input_size = input_size
+
+        # If number of LSTM layers is 1 and the dropout_probability provided is
+        # not None, print warning to the user.
+        if version != 3 and input_size!=hidden_size:
+            warnings.warn(
+                f"\nHidden state tensor in GRU MUT{version} cell architecture "
+                f"shall have the same shape as the input tensor. \nParameter "
+                f"hidden_size updated to match input_size."
+            )
+            self.hidden_size = input_size
+        else:
+            self.hidden_size = hidden_size
+
+        # Get the version of the GRU mutation
+        self._version = version
+
+        # Initialize activation functions
+        self._sigmoid = nn.Sigmoid()
+        self._tanh = nn.Tanh()
+        
+        # Initialize gate components (weight and bias) for every gate:
+        for gate in ['update','reset', 'hidden']:
+        
+            if not (gate=='reset' and version==2):
+                # Initialize gate weights (Wxg) that will process inputs at t.
+                # Gate component computation = Wxg * xt
+                setattr(self,f'gate_{gate}_x',
+                    nn.Linear(in_features = self.input_size, 
+                            out_features = self.hidden_size, 
+                            bias = True))
+            
+            if not (gate=='update' and version==1):
+                # Initialize gate weights (Whg) that will process hidden states 
+                # at time t-1, including bias associated to the gate.
+                # Gate component computation = h[t-1]*Whg + bg
+                setattr(self,f'gate_{gate}_h',
+                    nn.Linear(in_features = self.hidden_size, 
+                            out_features = self.hidden_size, 
+                            bias = True))
+            
+    def _forward_gate(self, gate:str, x:torch.TensorFloat, h:torch.TensorFloat, 
+            reset_gate:torch.TensorFloat = None) -> torch.TensorFloat:
+    
+        # Check gate requested is within GRU cell arquitecture.
+        if not gate in ['update','reset','hidden']:
+            raise ValueError('Gate () not defined.'.format(gate))
+        
+        # Get gate components for the input x or pass it through Tanh except for
+        # the reset gate in MUT2.
+        if not (gate=='reset' and self._version==2):
+
+            if gate=='hidden' and self._version==1:
+                # For the hidden gate only process the inputs through Tanh.
+                x = self._tanh(x)
+            else:
+                x = getattr(self,f'gate_{gate}_x')(x)
+
+        # Gate updat in MUT1 version only applies sigmoid function to the 
+        # inputs.
+        if (gate=='update' and self._version==1): return self._sigmoid(x)
+        
+        if gate=='hidden':
+            
+            # Check input_gate, forget_gate and cell state from t-1 is provided.
+            if reset_gate is None or h is None:
+                raise ValueError('Parameter(s) reset_gate and/or h missing.')
+
+            # New information part that will be injected in the new context
+            h_candidate = self._tanh(x + \
+                        getattr(self,f'gate_{gate}_h')(reset_gate * h))
+
+            return h_candidate
+        else:
+
+            h = getattr(self,f'gate_{gate}_h')(h)
+
+            # Apply sigmoid function to gate.
+            return self._sigmoid(x + h)
+        
+    def forward(self, x:torch.TensorFloat, h_prev:torch.TensorFloat) -> tuple:
+
+        # Get outputs from update gate.
+        u = self._forward_gate(gate = 'update', x = x, h = h_prev)
+
+        # Get outputs from reset gate.
+        r = self._forward_gate(gate = 'reset', x = x, h = h_prev)
+
+        # Get candidate hidden state.
+        h_candidate = self._forward_gate(gate = 'hidden', x = x, h = h_prev, 
+                                    reset_gate = r)
+
+        # Produce next hidden output
+        h_next = (1 - u) * h_prev + u * h_candidate
+
+        return h_next, h_next
+# %%
