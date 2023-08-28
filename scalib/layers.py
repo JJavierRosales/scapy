@@ -190,8 +190,8 @@ class LSTM(nn.Module):
         # not None, print warning to the user.
         if num_layers == 1 and dropout > 0:
             warnings.warn(
-                "Dropout parameter in LSTM class adds dropout layers after " 
-                "all but last recurrent layer. It expects num_layers greater "
+                "\nDropout parameter in LSTM class adds dropout layers after " 
+                "all but last recurrent layer. \nIt expects num_layers greater "
                 "> 1, but got num_layers = 1."
             )
         
