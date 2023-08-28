@@ -547,6 +547,7 @@ class ConjunctionEventForecaster(nn.Module):
         """
         if only_parameters:
             torch.save({
+                'num_params': sum(p.numel() for p in self.parameters()),
                 'epochs': self._learn_results['epoch'][-1],
                 'model': self.state_dict() if only_parameters else self,
                 'optimizer': self.optimizer.state_dict() if only_parameters \
