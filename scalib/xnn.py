@@ -12,6 +12,7 @@ import os
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
+import warnings
 
 from . import utils
 from .event import DatasetEventDataset
@@ -500,9 +501,10 @@ class ConjunctionEventForecaster(nn.Module):
                 # lr_scheduler.step()
 
                 # Update progress bar.
-                description = f'Batch {t_batch+1}/{n_batches} | ' + \
-                    f'Loss -> Train = {train_loss:6.4e} : ' + \
-                    f'Valid = {valid_loss:6.4e}'
+                description = f'E({epoch+1}/{epochs}) ' + \
+                    f'B({t_batch+1}/{n_batches}) | ' + \
+                    f'Loss > T({train_loss:6.4e}) ' + \
+                    f'V({valid_loss:6.4e})'
 
                 pb_epochs.refresh(i = relative_iters, 
                                   description = description,
@@ -553,7 +555,8 @@ class ConjunctionEventForecaster(nn.Module):
                 'optimizer': self.optimizer.state_dict() if only_parameters \
                     else self.optimizer,
                 'loss': self._loss,
-                'learn_results': self._learn_results
+                'learn_results': self._learn_results,
+                'features_stats': self._features_stats
             },  filepath)
         else:
             torch.save(self, filepath)
@@ -576,8 +579,96 @@ class ConjunctionEventForecaster(nn.Module):
             self.optimizer.load_state_dict(torch_file['optimizer'])
             self._loss = torch_file['loss']
             self._learn_results = torch_file['learn_results']
+            self._features_stats = torch_file['features_stats']
         else:
             self = torch.load(filepath)
+
+    def test(self, events_test:CED, test_batch_size:int, 
+             num_workers:int = 4) -> np.ndarray:
+        """Compute MSE loss on a test set using the trained model.
+
+        Args:
+            events_test (CED): Conjunction Events Dataset.
+            test_batch_size (int): Batch size.
+            num_workers (int, optional): Number of workers for the DataLoader
+            class. Defaults to 4.
+
+        Returns:
+            np.ndarray: NumPy array containing the MSE loss values per batch.
+        """
+
+
+        # Get test dataset with normalized features using the stats metrics. 
+        test_set = DatasetEventDataset(event_set = events_test, 
+                                       features = self._features, 
+                                       features_stats = self._features_stats)
+        
+        if test_batch_size > len(events_test):
+            test_batch_size = len(events_test)
+            warnings.warn(f'\nParameter test_batch_size ({test_batch_size})'
+                          f'can only be less or equal to the number of '
+                          f'items on events_set input ({len(events_test)})'
+                          f'\nSetting new value for test_batch_size='
+                          f'{len(events_test)}.')
+        
+        # Get loader objects for test set. The DataLoader class works by 
+        # creating an iterable dataset object and iterating over it in batches, 
+        # which are then fed into the model for processing. The object it 
+        # creates has the shape (batches, items) where items are the a number of 
+        # elements n = int(len(Dataset)/batch_size) taken from the Dataset 
+        # passed into the class.
+        test_loader = DataLoader(dataset = test_set, 
+                                 batch_size = test_batch_size, 
+                                 shuffle = True, 
+                                 num_workers = num_workers)
+
+
+        # Set-up device and criterion.
+        device = list(self.parameters())[0].device
+        criterion = nn.MSELoss()
+
+        # Initialize list of loss
+        test_loss = np.zeros((len(test_loader)))
+        pb_test = utils.ProgressBar(iterations = range(len(test_loader)),
+                                    title='TESTING FORECASTER MODEL:')
+        with torch.no_grad():
+            for t, (events, event_lengths) in enumerate(test_loader):
+
+                # Allocate events and event_lengths tensors to the device
+                # defined by the model.
+                events = events.to(device)
+                event_lengths = event_lengths.to(device)
+
+                # Get batch_size from event_lengths as it can be smaller for
+                # the last minibatch of an epoch.
+                batch_size = event_lengths.nelement()
+
+                # For every event object, take all CDMs except the last one 
+                # as inputs.
+                inputs = events[:, :-1]
+
+                # For every event object, shift CDM object list to set as 
+                # targets from 2nd CDM to last one. 
+                target = events[:, 1:]
+                event_lengths -= 1
+
+                # Initialize LSTM hidden state (h0) and cell state (c0).
+                self.reset(batch_size)
+
+                # Forecast next CDMs of the mini-batch using the inputs. The 
+                # model also requires a second parameter with the number of 
+                # CDMs per event object in order to pack padded sequences to 
+                # optimize computation.
+                output = self.forward(inputs, event_lengths)
+
+                # Compute loss using the criterion and add it to the array.
+                loss = criterion(output, target)
+                test_loss[t] = float(loss)
+                description = f'Loss -> Mean = {np.mean(test_loss[:t]):6.4e}' \
+                              f' Std. Dev. = {np.std(test_loss[:t]):6.4e}'
+                pb_test.refresh(i = t + 1, description=description)
+
+        return test_loss
 
     def predict(self, event: CE) -> CDM:
         """Predict next CDM object from a given ConjunctionEvent object.
@@ -776,20 +867,22 @@ class ConjunctionEventForecaster(nn.Module):
         # Initialize dictionary for hidden states tuple
         self.hidden = {}
 
+        device = list(self.parameters())[0].device
+
         for module_name, module in self.model.items():
             if 'lstm' in module_name:
 
                 h = torch.zeros(module.num_layers, batch_size, module.hidden_size)
                 c = torch.zeros(module.num_layers, batch_size, module.hidden_size)
 
-                h = h.to(self._device)
-                c = c.to(self._device)
+                h = h.to(device)
+                c = c.to(device)
                 
                 self.hidden[module_name] = (h.squeeze(0), c.squeeze(0))
             elif 'gru' in module_name:
 
                 h = torch.zeros(module.num_layers, batch_size, module.hidden_size)
-                h = h.to(self._device)
+                h = h.to(device)
                 
                 self.hidden[module_name] = h.squeeze(0)
 
