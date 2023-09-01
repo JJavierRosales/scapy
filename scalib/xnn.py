@@ -109,7 +109,7 @@ class CosineWarmupScheduler(optim.lr_scheduler._LRScheduler):
 #%% CLASS: ConjunctionEventForecaster
 # Define Feature Forecaster module
 class ConjunctionEventForecaster(nn.Module):
-    def __init__(self, layers:list, features:Union[list, str] = None) -> None:
+    def __init__(self, network:list, features:Union[list, str] = None) -> None:
         super(ConjunctionEventForecaster, self).__init__()
         if features is None:
             features = ['__CREATION_DATE',
@@ -181,7 +181,7 @@ class ConjunctionEventForecaster(nn.Module):
         self._batched = None
 
         # Set model using the modules parameter
-        self.model = layers
+        self.model = network
 
         self._features = features
         self._features_stats = None
@@ -273,7 +273,7 @@ class ConjunctionEventForecaster(nn.Module):
     def learn(self, event_set:list, epochs:int = 2, lr:float = 1e-3, 
               batch_size:int = 8, device:str = None, 
               valid_proportion:float = 0.15, num_workers:int = 4, 
-              event_samples_for_stats:int = 250, filepath_model:str = None,
+              event_samples_for_stats:int = 250, filepath:str = None,
               epoch_step_checkpoint:int = None, **kwargs) -> None:
         """Train RNN model.
 
@@ -292,10 +292,10 @@ class ConjunctionEventForecaster(nn.Module):
             event_samples_for_stats (int, optional): Number of events considered 
             to compute the mean and standard deviation used for normalization. 
             Defaults to 250.
-            filepath_model (str, optional): Filepath for the model 
+            filepath (str, optional): Filepath for the model 
             to be saved. If None, model is not saved. Defaults to None.
             epoch_step_checkpoint (int, optional): Number of epochs to process 
-            before saving a new checkpoint. Only applicable if filepath_model is
+            before saving a new checkpoint. Only applicable if filepath is
             not None. Defaults to None.
 
         Raises:
@@ -383,15 +383,15 @@ class ConjunctionEventForecaster(nn.Module):
 
         # Check if the same model already exists. If it does, load model 
         # parameters.
-        if filepath_model is not None and os.path.exists(filepath_model):
-            self.load(filepath_model)
+        if filepath is not None and os.path.exists(filepath):
+            self.load(filepath)
             self.optimizer.param_groups[0]['lr'] = lr
             print('\nModel parameters loaded from {}\n'
                   ' - Total epochs       = {}\n'
                   ' - Total iterations   = {}\n'
                   ' - Validation loss    = {:6.4e}\n'
                   ' - Last learning rate = {:6.4e}\n'
-                  ''.format(filepath_model,
+                  ''.format(filepath,
                             self._learn_results['epoch'][-1],
                             self._learn_results['total_iterations'][-1],
                             self._learn_results['validation_loss'][-1],
@@ -525,7 +525,7 @@ class ConjunctionEventForecaster(nn.Module):
                     pb_epochs.refresh(i = relative_iters, 
                                   description = 'Saving checkpoint...',
                                   nested_progress = True)
-                    self.save(filepath = filepath_model)
+                    self.save(filepath = filepath)
                     pb_epochs.refresh(i = relative_iters, 
                                       description = description,
                                       nested_progress = True)
@@ -534,9 +534,9 @@ class ConjunctionEventForecaster(nn.Module):
         # Print message at the end of the mini batch.
         pb_epochs.refresh(i = relative_iters, description = description)
 
-        if filepath_model is not None:
+        if filepath is not None:
             print(f'\nSaving model parameters ...', end='\r')
-            self.save(filepath = filepath_model)
+            self.save(filepath = filepath)
             print(f'Saving model parameters ... Done.')
             
     def save(self, filepath:str, only_parameters:bool=True):
@@ -582,7 +582,7 @@ class ConjunctionEventForecaster(nn.Module):
             self._features_stats = torch_file['features_stats']
         else:
             self = torch.load(filepath)
-
+    
     def test(self, events_test:CED, test_batch_size:int, 
              num_workers:int = 4) -> np.ndarray:
         """Compute MSE loss on a test set using the trained model.
@@ -625,12 +625,25 @@ class ConjunctionEventForecaster(nn.Module):
 
         # Set-up device and criterion.
         device = list(self.parameters())[0].device
-        criterion = nn.MSELoss()
 
-        # Initialize list of loss
-        test_loss = np.zeros((len(test_loader)))
-        pb_test = utils.ProgressBar(iterations = range(len(test_loader)),
-                                    title='TESTING FORECASTER MODEL:')
+        # Get number of parameters
+        k = sum(p.numel() for p in self.parameters())
+
+        # Define all criterions required for the regression metrics.
+        mae_criterion = nn.L1Loss()
+        mse_criterion = nn.MSELoss(reduction='mean')
+        sse_criterion = nn.MSELoss(reduction='sum')
+
+        # Initialize dictionary with the different regression metrics.
+        results = {'sse':np.zeros((len(test_loader))),
+                   'mse':np.zeros((len(test_loader))),
+                   'mae':np.zeros((len(test_loader))),
+                   'aic':np.zeros((len(test_loader))),
+                   'bic':np.zeros((len(test_loader))),
+                   'apc':np.zeros((len(test_loader))),
+                   'hsp':np.zeros((len(test_loader)))}
+
+        # Iterate over all items in the test_loader
         with torch.no_grad():
             for t, (events, event_lengths) in enumerate(test_loader):
 
@@ -661,14 +674,20 @@ class ConjunctionEventForecaster(nn.Module):
                 # optimize computation.
                 output = self.forward(inputs, event_lengths)
 
-                # Compute loss using the criterion and add it to the array.
-                loss = criterion(output, target)
-                test_loss[t] = float(loss)
-                description = f'Loss -> Mean = {np.mean(test_loss[:t]):6.4e}' \
-                              f' Std. Dev. = {np.std(test_loss[:t]):6.4e}'
-                pb_test.refresh(i = t + 1, description=description)
+                # Get test size
+                test_size = len(output)
 
-        return test_loss
+                # Compute regression metrics using the criterion and add it to 
+                # the array.
+                results['sse'][t] = float(sse_criterion(output, target))
+                results['mse'][t] = float(mse_criterion(output, target))
+                results['mae'][t] = float(mae_criterion(output, target))
+                results['aic'][t] = test_size*np.log(results['sse'][t]/test_size)+2*k
+                results['bic'][t] = test_size*np.log(results['sse'][t]/test_size)+k*np.log(test_size)
+                results['apc'][t] = (test_size + k)/(test_size*(test_size-k))*results['sse'][t]
+                results['hsp'][t] = results['sse'][t]/(test_size*(test_size-k-1))
+
+        return results
 
     def predict(self, event: CE) -> CDM:
         """Predict next CDM object from a given ConjunctionEvent object.
