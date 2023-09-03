@@ -639,9 +639,7 @@ class ConjunctionEventForecaster(nn.Module):
                    'mse':np.zeros((len(test_loader))),
                    'mae':np.zeros((len(test_loader))),
                    'aic':np.zeros((len(test_loader))),
-                   'bic':np.zeros((len(test_loader))),
-                   'apc':np.zeros((len(test_loader))),
-                   'hsp':np.zeros((len(test_loader)))}
+                   'bic':np.zeros((len(test_loader)))}
 
         # Iterate over all items in the test_loader
         with torch.no_grad():
@@ -684,8 +682,6 @@ class ConjunctionEventForecaster(nn.Module):
                 results['mae'][t] = float(mae_criterion(output, target))
                 results['aic'][t] = test_size*np.log(results['sse'][t]/test_size)+2*k
                 results['bic'][t] = test_size*np.log(results['sse'][t]/test_size)+k*np.log(test_size)
-                results['apc'][t] = (test_size + k)/(test_size*(test_size-k))*results['sse'][t]
-                results['hsp'][t] = results['sse'][t]/(test_size*(test_size-k-1))
 
         return results
 
