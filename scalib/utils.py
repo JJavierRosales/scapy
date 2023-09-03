@@ -455,13 +455,16 @@ def round_by_om(value:float, abs_method:str='ceil', **kwargs) -> float:
     return methods[abs_method](value/initial_om)*initial_om
 
 #%% FUNCTION: df2latex
-def df2latex(df: pd.DataFrame, column_format:str='c') -> str:
+def df2latex(df: pd.DataFrame, column_format:str='c', 
+             include_header:bool=False) -> str:
     """Convert pandas DataFrame to latex table.
 
     Args:
         df (pd.DataFrame): DataFrame to convert to LaTeX format.
         column_format (str, optional): Columns alignment (left 'l', center 'c', 
         or right 'r'). Defaults to 'c'.
+        include_header (bool, optional): Include header of DataFrame if True.
+        Defaults to False
 
     Returns:
         str: DataFrame in string format.
@@ -470,6 +473,7 @@ def df2latex(df: pd.DataFrame, column_format:str='c') -> str:
     column_format = 'c'*(len(df.columns)+1) if column_format=='c' \
         else column_format
 
+
     new_column_names = dict(zip(df.columns, 
                             ["\textbf{" + c + "}" for c in df.columns]))
     
@@ -477,8 +481,15 @@ def df2latex(df: pd.DataFrame, column_format:str='c') -> str:
     
     table = df.style.to_latex(column_format=column_format)
     table = table.replace('\n', '').encode('unicode-escape').decode()\
-            .replace('%', '\\%').replace('\\\\', '\\') \
-            .replace('\\\\count', '\\\\\\hline count')
+            .replace('%', '\\%').replace('\\\\', '\\')
+
+    if not include_header:
+        header_index = (table.index('{' + column_format + '}') + len(column_format) + 2,
+                        table.index('\\\\') + 4)
+        table = table[:header_index[0]+1] + table[header_index[1]-2:]
+    else:
+        table = table.replace('\\\\', '\\\\\\hline ', 1)
+
         
     return table
 
@@ -496,7 +507,7 @@ def number2latex(value) -> str:
     output = f'{value}'
 
     # Check input is a number
-    if not (isinstance(value, np.integer) or \
+    if not (isinstance(value, int) or \
             isinstance(value, float)): return output
     if not np.isfinite(value): return output
 
@@ -509,7 +520,9 @@ def number2latex(value) -> str:
     elif om(value)>5 or om(value)<=-2:
         # If absolute value is in the range (0, 0.01] or [10000, inf) show 
         # scientific notation with 3 decimals
-        output = r'$' + '{:.3e}'.format(value).replace('e',r'\cdot10^{')
+        # output = r'$' + '{:.3e}'.format(value).replace('e',r'\cdot10^{')
+        output = r'$' + '{:.3e}'.format(value).replace('e',r'\mathrm{e}{')
+
         output = output.replace('{+0','{').replace('{-0','{-') + r'}$'
 
     return output
@@ -534,6 +547,8 @@ def outliers_boundaries(data: np.ndarray, threshold: Union[tuple, float]=1.5,
     Q1 = np.quantile(data,0.25)
     Q3 = np.quantile(data,0.75)
     IQR = st.iqr(data)
+
+    positive_only = sum(data<0)==0 if positive_only else positive_only
 
     threshold = (threshold, threshold) if isinstance(threshold, float) \
         else threshold
@@ -797,7 +812,7 @@ class ProgressBar():
         
         if i > self._i:
 
-            if i==1 and self._header is None:
+            if self._header is None:
                 self._header = self._title + \
                     f"\n| {'Progress':<{19 + 2*om_iterations+1}}" + \
                     f" | {'Time':^11} | " + \
