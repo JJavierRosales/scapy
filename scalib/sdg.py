@@ -3,29 +3,38 @@ from __future__ import annotations
 from typing import Union
 
 from sklearn.neighbors import KernelDensity
+from sklearn.metrics import r2_score as r2_sklearn
 import matplotlib.pyplot as plt
-from . import utils 
+
 import numpy as np
 import pandas as pd
 import scipy.stats as st
 import math
 import warnings
 import os
+import pickle
 
-from scalib import eda
+import scalib.eda as eda
+import scalib.utils as utils 
 
 import statsmodels.api as smapi
 import statsmodels as sm
 
+
+
+
+
 #%% FUNCTION: kde
 # Define function to compute KDE
-def kde(x:np.ndarray, x_grid:np.ndarray, bandwidth:float, **kwargs) -> np.ndarray:
+def kde(x:np.ndarray, x_grid:np.ndarray, bandwidth:float, kernel:str='gaussian',
+         **kwargs) -> np.ndarray:
     """Get probability density function using Scikit-learn KernelDensity class. 
 
     Args:
         x (np.ndarray): Array of data to describe.
         x_grid (np.ndarray): Grid of points upon which the estimation will be done.
         bandwidth (float): Kernel bandwidth.
+        kernel (str, optional): Kernel to use. Defaults to gaussian.
 
     Returns:
         pdf (np.ndarray): Estimated probability densities over x_grid.
@@ -33,7 +42,7 @@ def kde(x:np.ndarray, x_grid:np.ndarray, bandwidth:float, **kwargs) -> np.ndarra
     
     # Instanciate KernelDensity class from Scikit-learn (kernel defaults to 
     # 'gaussian')
-    kde = KernelDensity(bandwidth=bandwidth, **kwargs)
+    kde = KernelDensity(bandwidth = bandwidth, kernel = kernel, **kwargs)
     
     # Fit Kernel
     kde.fit(np.array(x).reshape(-1,1))
@@ -43,110 +52,10 @@ def kde(x:np.ndarray, x_grid:np.ndarray, bandwidth:float, **kwargs) -> np.ndarra
     epd     = np.exp(log_pdf)
     
     return epd
-#%% FUNCTION: plot_scipy_pdf
-def plot_scipy_pdf(data: np.ndarray, stdist: st, figsize:tuple=(7,3),
-                   return_ax:bool = False, filepath:str = None, 
-                   **kwargs) -> Union[None, plt.Axes]:
-    """Plot histogram and PDF based on a given distribution and its parameters.
-
-    Args:
-        data (np.ndarray): Actual data to plot in the histogram.
-        stdist (st): SciPy distribution to plot.
-        figsize (tuple, optional): Figure size. Defaults to (7, 3).
-        return_ax (bool, optional): Return ax object.
-        filepath (str, optional): Path of the folder where the figure is saved.
-
-    Returns:
-        None: None
-    """
-
-    # Display plot
-    fig, ax = plt.subplots(figsize = figsize)
-
-    # Describe PDF fitting parameters if user wants
-    if kwargs.get('describe', False)==True:
-        
-        # Create description table to print statistical model used
-        index  = ['Data points', 'Function', '$R^2$ score']
-        values = [utils.number2latex(len(data)), 
-                  r'\texttt{' + stdist['dist'].name + r'}', 
-                  utils.number2latex(stdist['r2_score'])]
-
-        # Include information on the parameters
-        if stdist['params']!=None:
-            index = index + ['', r'\textbf{Parameters:}'] + \
-            [r'\texttt{' + n + '}' for n in stdist['params']['names']]
-
-            values  = values + ['', ''] + \
-                [utils.number2latex(v) for v in stdist['params']['values']]
-
-        # Get the latex output to include table on the right hand side of the 
-        # chart.
-        text = utils.df2latex(df=pd.DataFrame(index=index, 
-                                              data=values, 
-                                              columns=['']
-                                              ), column_format='cc')
 
 
-        t = ax.text(1.04, 0.5, text, size=10, transform=ax.transAxes,
-                    ha='left', va='center', c='black',  
-                    bbox=dict(facecolor='white', edgecolor='black', 
-                              alpha=0.75, pad=5))
-    
-    # Calculate number of bins to use in the histogram
-    bins = utils.nbins(data, kwargs.get('bins_method', 'fd'))
-
-    # Get standard data limits for better representation
-    std_lims, _, _ = utils.outliers_boundaries(data.flatten(), 
-                                               threshold = 1.5, 
-                                               positive_only=False)
-
-    # Separate parts of parameters
-    arg     = stdist['params']['arg_values'] 
-    loc     = stdist['params']['loc'] 
-    scale   = stdist['params']['scale']
-    
-    # Build PDF and turn into pandas Series
-    x = np.linspace(std_lims[0], std_lims[1], 1000)
-    y = stdist['dist'].pdf(x, loc=loc, scale=scale, *arg)
-    
-    # Plot the Probability density function
-    ax.plot(x, y, lw = 1.5, color = "orange", label="Estimated")
-    
-    # Plot histogram
-    n, bin_edges, _ = ax.hist(data, bins = bins['n'], density = True, 
-                               histtype='bar', color="dimgrey", 
-                               edgecolor = "white", label="Actual")
-    
-    # Get standard data boundaries for better readability of the plot
-    positive_only = (np.sum(data<0)==0)
-    std_lims, _, _ = utils.outliers_boundaries(data, 
-                                               positive_only = positive_only)
-    
-    # Set X and Y-axis limits
-    ax.set_xlim(max(bin_edges[0]  - bins['width'],std_lims[0]) , 
-             min(bin_edges[-1] + bins['width'],std_lims[1]))
-    ax.set_ylim(0, np.max(n)*1.5)
-    
-    # Set title and axis labels
-    ax.set_title(r'Actual vs estimated probability density', fontsize=10)
-    ax.set_xlabel(kwargs.get('xlabel', 'Feature'))
-    ax.set_ylabel(r'Probability density')
-    ax.grid(True, linestyle="dashed", alpha=0.5)
-    ax.legend(loc="best", fontsize=10)
-
-    # Remove blank spaces around the plot to be more compact.
-    plt.tight_layout()
-    
-    # Save plot only if filepath is provided.
-    if filepath is not None:
-        print('Plotting to file: {}'.format(filepath))
-        plt.savefig(filepath)
-
-    if return_ax:
-        return ax
 #%% FUNCTION: plot_kde
-def plot_kde(data:np.ndarray, bandwidths:np.ndarray, figsize:tuple=(6, 3), 
+def plot_kde(data:np.ndarray, bandwidth:float, figsize:tuple=(6, 3), 
              filepath:str = None, return_ax:bool = False, 
              **kwargs) -> Union[None, plt.Axes]:
     """Plot barchart with actual and estimated probability density.
@@ -154,7 +63,7 @@ def plot_kde(data:np.ndarray, bandwidths:np.ndarray, figsize:tuple=(6, 3),
     Args:
         data (np.ndarray): Actual data from which the probability density is 
         computed.
-        bandwidths (np.ndarray): Array of bandwidths to evaluate on the kernel.
+        bandwidth (float): Bandwidth value.
 
     Returns:
         Union[None, plt.Axes]: Axes object if return_ax = True.
@@ -170,30 +79,28 @@ def plot_kde(data:np.ndarray, bandwidths:np.ndarray, figsize:tuple=(6, 3),
                                      ec='white', label='Actual data')
     
     
-    labels = kwargs.get('bw_labels', [])
+
     kernel = kwargs.get('kernel', 'gaussian')
     pdf_grid_size = kwargs.get('pdf_grid_size', 200)
 
-    # Iterate over all bandwidths
-    for b, bw in enumerate(bandwidths):
+
         
-        # Fit Kernel Density Estimator
-        model = KernelDensity(bandwidth = bw, kernel = kernel)
-        data = data.reshape((len(data), 1))
-        model.fit(data)
+    # Fit Kernel Density Estimator
+    model = KernelDensity(bandwidth = bandwidth, kernel = kernel)
+    data = data.reshape((len(data), 1))
+    model.fit(data)
 
-        # Sample probabilities for a range of outcomes
-        values = np.asarray([v for v in np.linspace(start = min(data), 
-                                                    stop = max(data), 
-                                                    num = pdf_grid_size)])
-        values = values.reshape((len(values), 1))
-        probabilities = np.exp(model.score_samples(values))
+    # Sample probabilities for a range of outcomes
+    values = np.asarray([v for v in np.linspace(start = min(data), 
+                                                stop = max(data), 
+                                                num = pdf_grid_size)])
+    values = values.reshape((len(values), 1))
+    epd = np.exp(model.score_samples(values))
 
-        if len(labels) < b+1:
-            labels.append(f'bw = {bw:.4f}' if utils.om(bw)>-4 \
-                                           else f'bw = {bw:.3e}')
+    label = kwargs.get('label',f'BW = {bandwidth:.2e}')
 
-        ax.plot(values, probabilities, label = labels[b])
+
+    ax.plot(values, epd, label = label, color='tab:orange')
 
     std_lims, _, _ = utils.outliers_boundaries(data, 
                                                threshold = 1.5, 
@@ -208,7 +115,9 @@ def plot_kde(data:np.ndarray, bandwidths:np.ndarray, figsize:tuple=(6, 3),
     # Set axis labels and plot title.
     ax.set_xlabel(kwargs.get('xlabel', 'Feature'))
     ax.set_ylabel(kwargs.get('ylabel', 'Probability density'))
-    ax.set_title('Probability Density analysis', fontsize=10)
+
+    if 'title' in kwargs.keys():
+        ax.set_title(kwargs['title'], fontsize=10)
 
     ax.grid(True, linestyle="dashed", alpha=0.5)
     ax.legend(loc='best', fontsize=10)
@@ -269,32 +178,45 @@ def bws_statsmodels(data: np.ndarray,
         
     return bandwidths
 #%% FUNCTION: bws_msecv
-def bws_msecv(data: np.ndarray, bins:dict, conv_accuracy:float = 1e-5, 
-              n_batches_min:int = 2, n_batches_max:int = 10, 
-              print_log:bool = False) -> dict:
+def bws_msecv(data: np.ndarray, kernel:str='gaussian', bins_rule:str='fd', 
+              conv_accuracy:float = 1e-5, n_batches_min:int = 2, 
+              n_batches_max:int = 10, underfitting_factor:float=2, 
+              print_log:bool = False) -> tuple:
     """Computes optimal bandwidth minimizing MSE actual vs estimated density 
     through cross-validation.
 
     Args:
         data (np.ndarray): Array containing all input data.
-        bins (dict): _description_
+        kernel (str, optional): Kernel to use. Defaults to 'gaussian'.
+        bins (str, optional): Rule to use to compute the bin size. It can be one 
+        of the following options:
+            - Sturge ('sturge')
+            - Scott ('scott')
+            - Rice ('rice')
+            - Freedman-Diaconis ('fd') - Default
         conv_accuracy (float, optional): Convergence accuracy. Defaults to 1e-5.
         n_batches_min (int, optional): Minimum number of batches for the 
         cross-validation. Defaults to 2.
         n_batches_max (int, optional): Maximum number of batches for the 
         cross-validation. Defaults to 10.
+        underfitting_factor (float, optional): Factor to prevent bandwidth 
+        overfitting. Defaults to 2.
         print_log (bool, optional): Print computational log. Defaults to True.
 
     Returns:
-        dict: Dictionary with the bandwidth value that minimizes the MSE and the 
-        estimated MSE.
+        tuple: Bandwidth and estimated R2 score.
     """
+
+    
     
     # Set the seed for reproducibility
     np.random.seed(42)
 
     # Exclude NaN and non-finite numbers from data
     data = data[np.isfinite(data)]
+
+    # Get bins
+    bins = utils.nbins(data, bins_rule)
 
     # Create an array with the number of batches to process per iteration 
     batches_list = np.arange(start = n_batches_min, 
@@ -393,8 +315,9 @@ def bws_msecv(data: np.ndarray, bins:dict, conv_accuracy:float = 1e-5,
 
     # Round-up best bandwidth from all groups of batches using one order of 
     # magnitude less
-    scale = 10**utils.om(best_bandwidths.mean())
-    best_bw = (math.ceil(best_bandwidths.mean()/scale)*scale)
+    # scale = 10**utils.om(best_bandwidths.mean())
+    # best_bw = (math.ceil(best_bandwidths.mean()/scale)*scale)
+    best_bw = utils.round_by_om(best_bandwidths.mean()*underfitting_factor)
     
     
     # Compute final estimated probability density using the best bandwidth and 
@@ -402,13 +325,15 @@ def bws_msecv(data: np.ndarray, bins:dict, conv_accuracy:float = 1e-5,
     epd = kde(data, bin_centers, kernel='gaussian', bandwidth=best_bw)
     apd, bin_edges = np.histogram(data, bins = bins['n'], density=True)
     estimated_mse = ((epd - apd)**2).mean()
+    r2_score = r2_sklearn(apd,epd)
     
     if print_log: print(f'\nFinal Optimal bandwidth = {best_bw}\t '
                         f'MSE(apd, epd) = {estimated_mse}')
     
-    return {'bw': best_bw, 'estimated_mse':estimated_mse}
+    return best_bw, r2_score
 
 #%% FUNCTION: import_stdists_ranking
+
 def import_stdists_ranking(df_input:pd.DataFrame, filepath:str, 
                            scipy_distributions:list = None) -> tuple:
     """Import satistical fitting results per feature in a DataFrame.
@@ -504,3 +429,351 @@ def import_stdists_ranking(df_input:pd.DataFrame, filepath:str,
                                'params': params[idxmax][0]}
     
     return ranking, best_dists
+
+#%%
+
+class SyntheticDataGenerator():
+    def __init__(self, data:np.ndarray, r2_threhold:float = 0.95, 
+                 kernel:str = 'gaussian', underfitting_factor:float=3.0,
+                 filepath:str = None):
+        """Initializes SyntheticDataGenerator class.
+
+        Args:
+            data (np.ndarray): Array of numerical values to approach.
+            r2_threhold (float, optional): _description_. Defaults to 0.95.
+            kernel (str, optional): _description_. Defaults to 'gaussian'.
+            underfitting_factor (float, optional): _description_. Defaults to 
+            3.0.
+            filepath (str, optional): Path of the file with the fitted 
+            parameters. Defaults to None.
+        """
+
+
+        # Initialize attributes
+        self.data = data.flatten()
+        self.r2_threshold = r2_threhold
+
+        if filepath is not None:
+            folderpath = os.path.dirname(filepath)
+            if not os.path.exists(folderpath):
+                raise ValueError(f'Parent folder {folderpath} does not exist.')
+            else:
+                self.filepath = filepath
+
+        if filepath is None or \
+            (os.path.exists(folderpath) and not os.path.exists(filepath)):
+
+            # Find best distribution that describes the feature
+            best_stdist, _ = eda.find_best_distribution(data)
+
+            # Generate synthetic data
+            self.dist = best_stdist.dist
+            self.dist_params = best_stdist.params
+            self.dist_r2_score = best_stdist.r2_score()
+
+            # Set kernel function and underfitting factor
+            self.kernel = kernel
+            self.underfitting_factor = underfitting_factor
+
+            # Save parameters in the filepath if provided.
+            if filepath is not None: self.save(filepath=self.filepath)
+
+        else:
+            
+            # Load parameters from existing files
+            self.load(filepath = self.filepath)
+            
+            print(f'Parameters loaded from {self.filepath}')
+        
+
+    # Define kernel and underfitting_factor parameters as properties in the 
+    # class to attach behaviours. Setting a new value in either r2_threshold,
+    # underfitting_factor or kernel parameters will check if the best fitted 
+    # SciPy distribution is above the R2 score threshold and update the 
+    # bandwidth and KDE function accordingly.
+    @property
+    def r2_threshold(self):
+        return self._r2_threshold
+    
+    @r2_threshold.setter
+    def r2_threshold(self, new_threshold):
+        self._r2_threshold = new_threshold
+        if hasattr(self, 'dist_r2_score') and \
+           hasattr(self, 'data') and \
+           hasattr(self, 'kernel') and \
+           hasattr(self, 'underfitting_factor'):
+            if self.dist_r2_score < new_threshold:
+                self.set_kde()
+
+    @property
+    def underfitting_factor(self):
+        return self._underfitting_factor
+    
+    @underfitting_factor.setter
+    def underfitting_factor(self, new_factor:float):
+        self._underfitting_factor = new_factor
+        if hasattr(self, 'data') and \
+           hasattr(self, 'kernel') and \
+           hasattr(self, 'r2_threshold') and \
+           hasattr(self, 'dist_r2_score'):
+            if self.dist_r2_score < self.r2_threshold:
+                self.set_kde()
+
+    # @property
+    # def kernel(self):
+    #     return self._kernel
+    
+    # @kernel.setter
+    # def kernel(self, new_kernel:str):
+    #     self._kernel = new_kernel
+    #     if self.dist_r2_score < self.r2_threshold and \
+    #         (hasattr(self, 'data') and \
+    #          hasattr(self, 'underfitting_factor')):
+    #         self.set_kde()
+
+
+
+    def save(self, filepath:str):
+
+        if not filepath.endswith('.pkl'):
+            filepath = filepath + '.pkl'
+
+        src_dict = {'dist':{'name': self.dist.name,
+                            'params': self.dist_params,
+                            'r2_score': self.dist_r2_score}}
+        if hasattr(self, 'kde'):
+            src_dict['kde'] = {'kernel': self.kernel,
+                            'params': self.kde_params,
+                            'r2_score': self.kde_r2_score,
+                            'underfitting_factor':self.underfitting_factor}
+
+        with open(filepath, 'wb') as f:
+            pickle.dump(src_dict, f)
+        
+
+
+    def load(self, filepath:str):
+
+        with open(filepath, 'rb') as f:
+            loaded_dict = pickle.load(f)
+
+        self.dist = getattr(st, loaded_dict['dist']['name'])
+        self.dist_params = loaded_dict['dist']['params']
+        self.dist_r2_score = loaded_dict['dist']['r2_score']
+ 
+        if 'kde' in list(loaded_dict.keys()):
+            self.underfitting_factor = loaded_dict['kde']['underfitting_factor']
+            self.kde_params = loaded_dict['kde']['params']
+            self.kde_r2_score = loaded_dict['kde']['r2_score']
+            self.kde = KernelDensity(**self.kde_params).fit(self.data.reshape(-1,1))
+            self.kernel = loaded_dict['kde']['kernel']
+        
+
+    def set_kde(self):
+
+        print(f'\nEstimating optimal bandwidth for {self.kernel.capitalize()} '
+              f'Kernel Density...', end='\r')
+        # Get bandwidth results from MSE Cross-Validation function.
+        bandwidth, r2_score = bws_msecv(data = self.data, 
+                                kernel = self.kernel, 
+                                underfitting_factor=self.underfitting_factor)
+
+        print(f'Estimating optimal bandwidth for {self.kernel.capitalize()} '
+              f'Kernel Density... Optimal bandwidth = {bandwidth:4.2e}.')
+
+        # Fit KernelDensity estimator
+        self.kde = KernelDensity(kernel = self.kernel, bandwidth = bandwidth) \
+                                .fit(self.data.reshape(-1,1))
+        
+        self.kde_params = self.kde.get_params(deep=True)
+        self.kde_r2_score = r2_score
+
+        # Update synthetic data if already computed.
+        if hasattr(self, 'synthetic_data'):
+            self.generate_data(n_samples=len(self.synthetic_data))
+
+        # Update estimated probability density values if it was already computed.
+        if hasattr(self, 'epd_values'):
+            self.probability_density(n_samples_pd = len(self.epd_values))
+
+        # Save parameters if filepath is provided.
+        if hasattr(self, 'filepath'): self.save(filepath=self.filepath)
+
+        
+    def generate_data(self, n_samples:int = 1000, random_state:int = None):
+
+        # Check which method is used to produce synthetic data: SciPy 
+        # distribution or Kernel Density Estimator.
+        if self.dist_r2_score >= self.r2_threshold:
+
+            # Get loc, scale and arg parameters
+            loc = self.dist_params['loc']
+            scale = self.dist_params['scale']
+            arg = self.dist_params['arg_values']
+
+            synthetic_data = self.dist.rvs(*arg, 
+                                           loc = loc, 
+                                           scale = scale, 
+                                           size = n_samples, 
+                                           random_state = random_state)
+        else:
+
+            synthetic_data = self.kde.sample(n_samples = n_samples, 
+                                             random_state = random_state)
+            
+        self.synthetic_data = synthetic_data.flatten()
+
+
+    def probability_density(self, n_samples_pd:int = 1000):
+        
+        if self.dist_r2_score >= self.r2_threshold:
+
+            # Get loc, scale and arg parameters
+            loc = self.dist_params['loc']
+            scale = self.dist_params['scale']
+            arg = self.dist_params['arg_values']
+
+            # Get sane start and end points of distribution
+            start = self.dist.ppf(1e-3, *arg, loc=loc, scale=scale) \
+                if arg else self.dist.ppf(1e-3, loc=loc, scale=scale)
+            end = self.dist.ppf(1-1e-3, *arg, loc=loc, scale=scale) \
+                if arg else self.dist.ppf(1-1e-3, loc=loc, scale=scale)
+
+            # Build PDF and turn into pandas Series
+            values = np.linspace(start, end, n_samples_pd)
+            epd = self.dist.pdf(values, loc=loc, scale=scale, *arg)
+
+        else:
+            
+            # Initialize KDE object if has not been done already.
+            if self.kde is None: self.set_kde()
+
+            # Estimated Probability density for visualization purposes only.
+            values = np.linspace(min(self.data), max(self.data), n_samples_pd)
+
+            # Get log-likelihood of the samples
+            log_pdf = self.kde.score_samples(values[:, np.newaxis])
+            epd = np.exp(log_pdf)
+
+        self.epd_values = pd.Series(epd, values)
+
+
+    def plot_histogram(self, show_data:str='all', bins:int=25, xlabel:str=None, 
+                       random_state:int = None, figsize:tuple=(6,3), 
+                       n_synthetic_samples:int = 1000, n_epd_samples:int = 1000,
+                       show_probabilities:bool=True, filepath:str=None,
+                       return_ax:bool = False, show_stats:bool=False):
+
+        
+        # Get synthetic data if required.
+        if show_data in ['all', 'synthetic']:
+            self.generate_data(n_synthetic_samples, random_state)
+
+        # Initialize plot object.
+        fig, ax = plt.subplots(figsize = figsize)
+
+        if show_data=='all':
+            hist_data = [self.data, self.synthetic_data]
+            hist_labels = ["Actual", "Synthetic"]
+            hist_colors = ["dimgrey","lightskyblue"]
+        elif show_data=='synthetic':
+            hist_data = [self.synthetic_data]
+            hist_labels = ["Synthetic"]
+            hist_colors = ["lightskyblue"]
+        elif show_data=='actual':
+            hist_data = [self.data]
+            hist_labels = ["Actual"]
+            hist_colors = ["dimgrey"]
+        else:
+            raise ValueError(f'Parameter show_data ({show_data}) shall be'
+                             f' either "all", "actual", or "synthetic".')
+            
+        # Create histogram.
+        ax.hist(hist_data, bins, label=hist_labels, color=hist_colors, 
+                density=show_probabilities)
+        
+        # Add statistical summary next to the plot
+        if show_stats: 
+
+            # Initialize dataframe for statistics
+            df_stats = pd.DataFrame()
+
+            # Iterate over all histogram data to plot
+            for h in range(len(hist_data)):
+                df_h = pd.DataFrame(data = hist_data[h], 
+                                    columns = [hist_labels[h]]) \
+                                .describe(percentiles=[0.5])
+                df_stats = pd.concat([df_stats, df_h], axis=1)
+
+            # Rename stats names in the DataFrame for better readability.    
+            df_stats.rename(index={'count': 'Count', 'mean':'Mean','std':'Std',
+                                '50%':'Median', 'min':'Min','max':'Max'}, 
+                            inplace=True)
+            
+            # Format numbers to be in LaTeX format
+            values = [[utils.number2latex(number) for number in row] \
+                    for row in df_stats.to_numpy()]
+            
+            # Get table in LaTeX format
+            text = utils.df2latex(pd.DataFrame(data = values, 
+                                            index = list(df_stats.index), 
+                                            columns=hist_labels),
+                                  include_header=True)
+
+            # Add LaTeX table to the right of the plot
+            ax.text(1.04, 0.5, text, size=10, ha='left', 
+                    va='center', c='black', transform=ax.transAxes, 
+                    bbox=dict(facecolor='white', edgecolor='black', 
+                            alpha=0.75, pad=5))
+
+        # Plot density probabilities if required.
+        if show_probabilities:
+            # Get estimated probability density
+            self.probability_density(n_epd_samples)
+
+            ax.plot(self.epd_values, label="PDF", color = "tab:orange")
+
+        # Set Y-axis label
+        ylabel = 'Probability density' if show_probabilities else 'Count'
+        ax.set_ylabel(ylabel)
+
+        if xlabel is not None:
+            ax.set_xlabel(xlabel)
+        else:
+            ax.set_xlabel('Feature')
+            
+        ax.grid(True, linestyle="dashed", alpha=0.5)
+        ax.legend(loc="best", fontsize=8)
+
+        plt.tight_layout()
+
+        if filepath is not None: 
+            print(f'Saving plot to: {filepath}')
+            fig.savefig(filepath = filepath, bbox_inches='tight')
+
+        if return_ax: return ax
+
+    def __repr__(self) -> str:
+        """Print readable information about the synthetic data.
+
+        Returns:
+            str: Class name with number of CDMs objects contained on it.
+        """
+
+        if self.dist_r2_score >= self.r2_threshold:
+            # Get length of longest name for formatting
+            s = len(max(self.dist_params['names'], key = len))
+            
+            params = zip(self.dist_params['names'], self.dist_params['values']) 
+            params = '\n   - '.join([f'{n:{s}} = {v:}' for n, v in params])
+
+            description = f'\n  Method:       Parametric' + \
+                          f'\n  Distribution: {self.dist.name}' + \
+                          f'\n  Parameters:\n   - {params}'
+        else:
+            description = f'\n  Method:    Non-Parametric' + \
+                          f'\n  Kernel:    {self.kde_params["kernel"]}' + \
+                          f'\n  Bandwidth: {self.kde_params["bandwidth"]}' + \
+                          f'\n  Algorithm: {self.kde_params["algorithm"]}'
+            
+        return f'\nSyntheticDataGenerator:{description}'

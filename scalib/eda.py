@@ -4,7 +4,6 @@ from typing import Union
 
 import os
 import pandas as pd
-import requests
 import time
 import scipy.stats as st
 import numpy as np
@@ -12,7 +11,7 @@ import warnings
 import matplotlib.pyplot as plt
 from datetime import datetime, timedelta
 
-from . import utils
+import scalib.utils as utils
 
 from sklearn.metrics import r2_score as r2_sklearn
 
@@ -152,6 +151,9 @@ def kelvins_challenge_events(filepath:str, num_events:int = None,
                                 k_cdm['{}_sigma_{}' \
                                       .format(v,i_rtn).lower()]**2.0
                         else:
+                            # Re-scale non-diagonal elements of the covariance
+                            # matrix using the variances of the variable (i.e
+                            # CR_T = t_cr_t * t_sigma_r * t_sigma_t)
                             cdm[k + feature] = \
                                 k_cdm[v + feature.lower()] * \
                                 k_cdm['{}_sigma_{}'.format(v,j_rtn).lower()] * \
@@ -174,6 +176,13 @@ def kelvins_challenge_events(filepath:str, num_events:int = None,
 
             cdm['OBJECT2_OBJECT_TYPE'] = k_cdm['c_object_type']
 
+            values_extra = {}
+            for feature in ['risk', 'max_risk_estimate', 'max_risk_scaling']:
+                if not feature in list(k_cdm.keys()): continue
+                values_extra.update({f'__{feature.upper()}': k_cdm[feature]})
+
+            cdm._values_extra.update(values_extra)
+
             # Append CDM object to the event list.
             event_cdms.append(cdm)
 
@@ -190,39 +199,6 @@ def kelvins_challenge_events(filepath:str, num_events:int = None,
     return CED(events=events)
 
 
-#%% FUNCTION: import_cdm_data
-def import_cdm_data(filepath: str) -> pd.DataFrame:
-    """Import CDM dataset from the Collision Avoidance Challenge and cast 
-    features into the correct data types.
-
-    Args:
-        filepath (str): Path of the CSV file containing CDM data.
-
-    Returns:
-        pd.DataFrame: Dataframe object containing the dataset.
-    """
-
-    # Import training dataset
-    df = pd.read_csv(filepath, sep=',', header=0, skipinitialspace=False)
-
-    # Cast categorical features as category type.
-    for feature in ['event_id', 'mission_id', 'c_object_type', 
-                    't_time_lastob_start', 'c_time_lastob_start',
-                    't_time_lastob_end', 'c_time_lastob_end']:
-        df[feature] = df[feature].fillna(0, inplace=False).astype('category')
-        #df[feature] = df[feature].fillna("UNKNOWN")
-
-    # Cast indexes and integer values to int type.
-    for feature in ['t_obs_available', 't_obs_used',
-                    'c_obs_available', 'c_obs_used',
-                    'F10', 'AP', 'F3M', 'SSN']:
-        df[feature] = df[feature].fillna(0, inplace=False).astype('int16')
-
-    # Sort values of dataframe by event_id and time_to_tca and re-index
-    df.sort_values(by=['event_id', 'time_to_tca'], axis='index', 
-                ascending=[True,False], inplace=True, ignore_index=True)
-
-    return df
 
 #%% CLASS: RobustScalerClipper
 # Define Collision Risk Probability Estimator
@@ -448,107 +424,59 @@ class FitScipyDistribution:
         
         return pdf
 
-#%% FUNCTION: get_scipy_distribution
-def get_scipy_distributions(filepath:str, 
-    stdists_exc:list = ['studentized_range', 'levy_l_gen', 'levy_stable']) \
-    -> list:
-    """Get list of continuous distributions from SciPy.org website
+
+
+#%% FUNCTION: find_best_distribution
+def find_best_distribution(data: np.ndarray, 
+                           stdists_exc:list = ['studentized_range', 
+                                               'levy_l_gen', 
+                                               'levy_stable']) -> tuple:
+    """Find best fitted distribution (higher R2 score vs actual probability 
+    density).
 
     Args:
-        filepath (str): Current working directory path.
+        data (np.ndarray): Array upon which find the best SciPy distribution.
         stdists_exc (list, optional): List of distributions names to exclude 
         from list. Defaults to ['studentized_range', 'levy_l_gen', 
         'levy_stable'].
 
     Returns:
-        list: List of distributions available either in SciPy.org or locally.
-    """
-    
-    folderpath = os.path.dirname(filepath)
-    if not os.path.exists(folderpath):
-        raise ValueError(f'Folder ({folderpath}) does not exist.')
-    
-
-    # filepath = os.path.join(cwd,'notebooks','nbtemp','scipy_distributions.csv')
-
-    try:
-        # Get Continuous distributions table from SciPy website.
-        url = 'https://docs.scipy.org/doc/scipy/reference/stats.html'
-        tbody = pd.read_html(requests.get(url).content)[1]
-        
-        # Create pandas dataframe and save CSV local file to be able to use the 
-        # notebook offline.
-        df_stdist = pd.DataFrame(data = tbody[0].to_list(), 
-                                 columns=['scipy_distributions'])
-        print("Importing SciPy distributions from SciPy.org ...", end='\r')
-        # Export dataframe as CSV file in the temporary folder
-        df_stdist.to_csv(filepath, sep=',')
-        print(f"{len(df_stdist)} distributions imported from SciPy.org.")
-        
-    except Exception:
-
-        if not os.path.exists(filepath):
-            raise ValueError(f'Working offline. File ({filepath}) could not '
-                             f'be imported because it does not exist.')
-
-        print("Importing SciPy distributions from local file...", end='\r')
-        # Import scipy distributions if working offline
-        df_stdist = pd.read_csv(filepath, sep=',', header=0, index_col=None, 
-                                skipinitialspace=False)
-        print(f"{len(df_stdist)} SciPy distributions imported from local file.")
-
-        pass
-    
-    # Evaluate list of objects in str format to convert it into a Python list
-    stdists_list = []
-    
-    # Iterate through all the continous distributions on the website and 
-    # evaluate it to discard those that are not compatible with the library 
-    # version installed.
-    for stdist_i in df_stdist['scipy_distributions'].to_list():
-        try:
-            if not stdist_i in stdists_exc: 
-                stdists_list.append(eval('st.' + stdist_i))
-        except Exception:
-            pass
-
-    return stdists_list
-
-#%% FUNCTION: find_best_distribution
-def find_best_distribution(data: pd.Series, scipy_distributions:list) -> tuple:
-    """Find best fitted distribution (higher R2 score vs actual probability 
-    density).
-
-    Args:
-        data (pd.Series): Array upon which find the best SciPy distribution.
-        scipy_distributions (list): List of SciPy distributions to fit.
-
-    Returns:
         tuple: Best distribution object and ranking of all distributions with 
         its R2 score.
     """
+
+    # Get Continuous distributions available in SciPy stats module
+    scipy_distributions = {}
+    for i in dir(st):
+        # Get name of the class
+        class_name = str(getattr(st,i).__class__)
+
+        # If it is a continuous distribution class, add it to the dictionary
+        if 'scipy.stats._continuous_distns' in class_name:
+            scipy_distributions[i] = getattr(st,i)
     
     # Remove non-finite values and initialize best holder using the norm 
     # distribution
-    data = data[data.notnull()]
     best_stdist = FitScipyDistribution(data, st.norm)
 
-
-    pb_dist = utils.ProgressBar(iterations = scipy_distributions, 
-                      description = "Looking for best distribution")
+    pb_dist = utils.ProgressBar(iterations = scipy_distributions.values(), 
+                    title='FITTING SCIPY DISTRIBUTIONS:',
+                    description = "Looking for best distribution")
     
     fitting_results = []
 
     # Estimate distribution parameters from data
     for i, stdist_i in enumerate(pb_dist.iterations):
+
+        # If distribution is one of the excluded skip fitting process.
+        if stdist_i.name in stdists_exc: continue
         
         # Fit stdist to real data.
         fitted_stdist = FitScipyDistribution(data, stdist_i)
 
         # Update progress bar.
-        description = f"Best: {best_stdist.name} " + \
-                      f"(R2={best_stdist.r2_score():.2f}) / " + \
-                      f"Fitting {fitted_stdist.name} ..."
+        description = f"Max R2 = {best_stdist.r2_score():6.4e} > " + \
+                      f"Fitting {fitted_stdist.name}"
         
         pb_dist.refresh(i = i+1, 
                         description = description,
@@ -564,7 +492,7 @@ def find_best_distribution(data: pd.Series, scipy_distributions:list) -> tuple:
         fitting_results.append([fitted_stdist.name, params])
 
     # Show completed process
-    pb_dist.refresh(i = i+1, description = description.split(' / ')[0])
+    pb_dist.refresh(i = i+1, description = description.split('>')[0])
         
     # Sort values of dataframe by sse ascending and and re-index.
     ranking = pd.DataFrame(data = fitting_results, 
@@ -574,9 +502,9 @@ def find_best_distribution(data: pd.Series, scipy_distributions:list) -> tuple:
     return best_stdist, ranking
 
 #%% FUNCTION: plot_histogram
-def plot_histogram(df_input:pd.DataFrame, features:list, figsize:tuple = (8, 3), 
-                   return_ax:bool=False, bins_rule:str='fd', **kwargs) \
-                    -> Union[None, plt.Axes]:
+def plot_histogram(data:np.ndarray, features:list, figsize:tuple = (6, 3), 
+                   return_ax:bool=False, bins:int=40, show_stats:bool = False, 
+                   show:bool=True, **kwargs):
     """Plot custom histogram for dataframe features. 
 
     Args:
@@ -585,90 +513,83 @@ def plot_histogram(df_input:pd.DataFrame, features:list, figsize:tuple = (8, 3),
         figsize (tuple, optional): Figure size. Defaults to (8, 3).
         return_ax (bool, optional): Return Axes object if True. Defaults to 
         False.
-        bins_rule (str, optional): Rule to compute number of bins. Defaults to 
-        'fd'.
+        bins (int, optional): Number of bins to use in the histogram. Defaults 
+        to 40.
+        show_stats (bool, optional): Add table with statistics to the right
+        hand size of the plot. Defaults to False.
+        show (bool, optional): Show plot inline. Defaults to True.
 
     Returns:
         Union[None, plt.Axes]: Axes object if return_ax = True, None otherwise.
     """
 
-    # Check that all features are categorical or numerical
-    if 'str' in df_input[features].dtypes.values: return None 
-    if len(np.unique([str(t) for t in list(df_input[features].dtypes)])) > 1: 
-        return None
-
-    # Normalize data if passed as argument
-    data = []
-    for f, feature in enumerate(features):
-        data.append(df_input[feature].dropna().to_numpy())
-
-    all_data = df_input[features].dropna().to_numpy().flatten()
+    if not isinstance(data, list):
+        data = [data]
+        features = [features]
 
     # Create figure object
     fig, ax = plt.subplots(figsize = figsize)
 
     # Get kwargs specific for the plot
     plt_kwargs = dict(edgecolor='white', align='mid', alpha=1.0, rwidth=1.0)
-    # plt_kwargs.update(kwargs.get('plt_kwargs',dict()))
 
-    if not 'category' in df_input[features].dtypes.values:
-        # Compute number of outliers for better representation on histogram
+    if isinstance(data[0], str):
 
-        std_lims, std_data, _ = utils.outliers_boundaries(all_data, 
-                                            threshold = 1.5, 
-                                            positive_only=np.sum(all_data<0)==0)
+        # Calculate number of bins to plot histogram
+        if bins!=len(set(data)):
+            warnings.warn(f'\nNumber of bins for categorical data shall be '
+                          f'equal to the number of unique categories.'
+                          f'\n Setting bins={len(set(data))}.')
+            bins = len(set(data))
+
+        df_stats = pd.DataFrame(data = data).describe()
+
+    else:
 
         # Compute new X-axis limits for a better plot representation.
-        xlim = kwargs.get('xlim', 
-                          (utils.round_by_om(max(std_lims[0], all_data.min()), 
-                                             abs_method='floor'), 
-                           utils.round_by_om(min(std_lims[1], all_data.max()), 
-                                             abs_method='ceil')))
+        xlim = kwargs.get('xlim', None)
+
+        if xlim is None:
+            xlim_percentiles = kwargs.get('xlim_percentiles', (2, 98))
+            xlim = (utils.round_by_om(np.percentile(data, xlim_percentiles[0])), 
+                    utils.round_by_om(np.percentile(data, xlim_percentiles[1])))
+
+        # Set the limits of representation for the X-axis
         ax.set_xlim(xlim)
         plt_kwargs.update(dict(range=xlim))
 
         # Calculate number of bins to plot histogram
-        nbins = utils.nbins(std_data, bins_rule)
-        bins = kwargs.get('bins', nbins['range'])
+        df_stats = pd.DataFrame(data = data[0], columns = features) \
+                            .describe(percentiles=[0.5, 0.05, 0.95])
+        df_stats.rename(index={'count': 'Count', 'mean':'Mean','std':'Std',
+                               '50%':'Median', 'min':'Min','max':'Max'}, 
+                        inplace=True)
 
-        description_table = pd.DataFrame(data=df_input[features]) \
-                            .describe(percentiles=[0.05, 0.25, 0.5, 0.75, 0.95])
+    # Add summary before the histogram
+    if show_stats: 
+        # Format numbers to be in LaTeX format
+        values = [[utils.number2latex(number) for number in row] \
+                for row in df_stats.to_numpy()]
+        
+        # Get table in LaTeX format
+        columns = [r'\texttt{' + feature + '}' for feature in features]
+        text = utils.df2latex(pd.DataFrame(data = values, 
+                                        index = list(df_stats.index), 
+                                        columns=columns))
 
-    else:
-        # Calculate number of bins to plot histogram
-        bins = len(df_input[features[0]].cat.categories.values)
+        # Add LaTeX table to the right of the plot
+        ax.text(1.04, 0.5, text, size=10, ha='left', 
+                va='center', c='black', transform=ax.transAxes, 
+                bbox=dict(facecolor='white', edgecolor='black', 
+                          alpha=0.75, pad=5))
 
-        description_table = pd.DataFrame(data=df_input[features]).describe()
-
-
-    # Format values for the description table
-    values=[[utils.number2latex(element) for element in array] \
-            for array in description_table.to_numpy()]
-    columns = kwargs.get('describe_colnames', 
-                        [r'\texttt{' + feature + '}' for feature in features])
-    text = utils.df2latex(pd.DataFrame(data=values, 
-                                       index=list(description_table.index), 
-                                       columns=columns))
-
-    # Print statistical summary before the histogram
-    if kwargs.get('describe', True): 
-        t = ax.text(1.04, 0.5, text, size=10, ha='left', 
-                  va='center', c='black', transform=ax.transAxes, 
-                  bbox=dict(facecolor='white', edgecolor='black', 
-                  alpha=0.75, pad=5))
 
     # Plot histogram
-    if 'hist_kwargs' in list(kwargs.keys()):
-        for f in range(len(features), 0, -1):
-            plt_kwargs.update(kwargs['hist_kwargs'][f-1])
-            ax.hist(data[f-1], bins=bins, **plt_kwargs)
-    else:
-        ax.hist(data, bins=bins, **plt_kwargs)
+    ax.hist(data, bins=bins, color = kwargs.get('color', 'tab:blue'), 
+            **plt_kwargs)
     
     # Compute new Y-axis limits for a better plot representation.
-    ylim = (ax.get_ylim()[0], 
-            utils.round_by_om(ax.get_ylim()[1], abs_method='ceil'))
-    ylim = kwargs.get('ylim', ylim)
+    ylim = kwargs.get('ylim', ax.get_ylim())
     ax.set_yticks(np.linspace(ylim[0], ylim[1], 5))
     ax.set_ylim(ylim)
 
@@ -677,21 +598,122 @@ def plot_histogram(df_input:pd.DataFrame, features:list, figsize:tuple = (8, 3),
     ylabel = kwargs.get('ylabel', r'Number of objects')
     title  = kwargs.get('title',  r'Histogram')
     
-    ax.set_ylabel(ylabel=ylabel, fontsize=12) 
-    ax.set_xlabel(xlabel=xlabel, fontsize=12)
-    ax.set_title(label=title,   fontsize=12)
+    ax.set_ylabel(ylabel = ylabel, fontsize = 12) 
+    ax.set_xlabel(xlabel = xlabel, fontsize = 12)
+    ax.set_title(label = title,   fontsize = 12)
     
     # Plot legend and print plot
-    if kwargs.get('legend', True): ax.legend(loc='upper right', fontsize=10)
+    if kwargs.get('legend', False): ax.legend(loc='upper right', fontsize=10)
     ax.grid(True, linestyle='--')
 
     # Remove blank spaces around the plot to be more compact.
     plt.tight_layout()
 
     if 'filepath' in list(kwargs.keys()):
-        plt.savefig(kwargs['filepath'], bbox_inches='tight')
-    plt.show()
+        fig.savefig(kwargs['filepath'], bbox_inches='tight')
 
-    if return_ax:
-        return ax
+    if return_ax: return ax
+    if show: plt.show()
 
+#%% FUNCTION: plot_scipy_pdf
+def plot_scipy_pdf(data: np.ndarray, stdist: st, figsize:tuple=(7,3),
+                   return_ax:bool = False, filepath:str = None, show:bool=True, 
+                   **kwargs) -> Union[None, plt.Axes]:
+    """Plot histogram and PDF based on a given distribution and its parameters.
+
+    Args:
+        data (np.ndarray): Actual data to plot in the histogram.
+        stdist (st): SciPy distribution to plot.
+        figsize (tuple, optional): Figure size. Defaults to (7, 3).
+        return_ax (bool, optional): Return ax object.
+        filepath (str, optional): Path of the folder where the figure is saved.
+        show (bool, optional): Show plot inline. Defaults to True.
+
+    Returns:
+        None: None
+    """
+
+    # Display plot
+    fig, ax = plt.subplots(figsize = figsize)
+
+    # Describe PDF fitting parameters if user wants
+    if kwargs.get('show_parameters', False):
+        
+        # Create description table to print statistical model used
+        index  = ['Data points', 'Function', '$R^2$ score']
+        values = [utils.number2latex(len(data)), 
+                  r'\texttt{' + stdist['dist'].name + r'}', 
+                  utils.number2latex(stdist['r2_score'])]
+
+        # Include information on the parameters
+        if stdist['params']!=None:
+            index = index + ['', r'\textbf{Parameters:}'] + \
+            [r'\texttt{' + n + '}' for n in stdist['params']['names']]
+
+            values  = values + ['', ''] + \
+                [utils.number2latex(v) for v in stdist['params']['values']]
+
+        # Get the latex output to include table on the right hand side of the 
+        # chart.
+        text = utils.df2latex(df = pd.DataFrame(index=index, 
+                                              data=values, 
+                                              columns=['']), 
+                                column_format='cc')
+
+        ax.text(1.04, 0.5, text, size=10, transform=ax.transAxes,
+                ha='left', va='center', c='black',  
+                bbox=dict(facecolor='white', edgecolor='black', 
+                          alpha=0.75, pad=5))
+    
+    # Calculate number of bins to use in the histogram
+    bins = utils.nbins(data, kwargs.get('bins_method', 'fd'))
+
+    # Get standard data limits for better representation
+    std_lims, _, _ = utils.outliers_boundaries(data.flatten(), 
+                                               threshold = 1.5, 
+                                               positive_only=False)
+
+    # Separate parts of parameters
+    arg     = stdist['params']['arg_values'] 
+    loc     = stdist['params']['loc'] 
+    scale   = stdist['params']['scale']
+    
+    # Build PDF and turn into pandas Series
+    x = np.linspace(std_lims[0], std_lims[1], 1000)
+    y = stdist['dist'].pdf(x, loc=loc, scale=scale, *arg)
+    
+    # Plot the Probability density function
+    ax.plot(x, y, lw = 1.5, color = "orange", label="Estimated")
+    
+    # Plot histogram
+    n, bin_edges, _ = ax.hist(data, bins = bins['n'], density = True, 
+                               histtype='bar', color="dimgrey", 
+                               edgecolor = "white", label="Actual")
+    
+    # Get standard data boundaries for better readability of the plot
+    positive_only = (np.sum(data<0)==0)
+    std_lims, _, _ = utils.outliers_boundaries(data, 
+                                               positive_only = positive_only)
+    
+    # Set X and Y-axis limits
+    ax.set_xlim(max(bin_edges[0]  - bins['width'],std_lims[0]) , 
+             min(bin_edges[-1] + bins['width'],std_lims[1]))
+    ax.set_ylim(0, np.max(n)*1.5)
+    
+    # Set title and axis labels
+    ax.set_title(r'Actual vs estimated probability density', fontsize=10)
+    ax.set_xlabel(kwargs.get('xlabel', 'Feature'))
+    ax.set_ylabel(r'Probability density')
+    ax.grid(True, linestyle="dashed", alpha=0.5)
+    ax.legend(loc="best", fontsize=10)
+
+    # Remove blank spaces around the plot to be more compact.
+    plt.tight_layout()
+    
+    # Save plot only if filepath is provided.
+    if filepath is not None:
+        print('Plotting to file: {}'.format(filepath))
+        fig.savefig(filepath)
+
+    if return_ax: return ax
+    if show: plt.show()
