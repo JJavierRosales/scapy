@@ -19,17 +19,17 @@ output_size = 66
 dropout = 0.2
 
 #%% Kessler (LSTM Vanilla)
-networks.update({'kessler':
-                 nn.ModuleDict({'lstm': nn.LSTM(input_size = input_size,
-                                        batch_first = True,
-                                        hidden_size = 264,
-                                        num_layers = 2,
-                                        dropout = dropout),
-                                'dropout': nn.Dropout(p = dropout),
-                                'relu': nn.ReLU(),
-                                'linear': nn.Linear(264, output_size)
-                                })
-                })
+# networks.update({'kessler':
+#                  nn.ModuleDict({'lstm': nn.LSTM(input_size = input_size,
+#                                         batch_first = True,
+#                                         hidden_size = 264,
+#                                         num_layers = 2,
+#                                         dropout = dropout),
+#                                 'dropout': nn.Dropout(p = dropout),
+#                                 'relu': nn.ReLU(),
+#                                 'linear': nn.Linear(264, output_size)
+#                                 })
+#                 })
 
 #%% LSTM layer with Vanilla cell architecture
 networks.update({'lstm_vanilla':
