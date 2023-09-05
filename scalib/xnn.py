@@ -639,7 +639,9 @@ class ConjunctionEventForecaster(nn.Module):
                    'mse':np.zeros((len(test_loader))),
                    'mae':np.zeros((len(test_loader))),
                    'aic':np.zeros((len(test_loader))),
-                   'bic':np.zeros((len(test_loader)))}
+                   'bic':np.zeros((len(test_loader))),
+                   'apc':np.zeros((len(test_loader))),
+                   'hsp':np.zeros((len(test_loader)))}
 
         # Iterate over all items in the test_loader
         with torch.no_grad():
@@ -682,6 +684,8 @@ class ConjunctionEventForecaster(nn.Module):
                 results['mae'][t] = float(mae_criterion(output, target))
                 results['aic'][t] = test_size*np.log(results['sse'][t]/test_size)+2*k
                 results['bic'][t] = test_size*np.log(results['sse'][t]/test_size)+k*np.log(test_size)
+                results['apc'][t] = (test_size + k)/(test_size*(test_size-k))*results['sse'][t]
+                results['hsp'][t] = results['sse'][t]/(test_size*(test_size-k-1))
 
         return results
 
@@ -894,7 +898,7 @@ class ConjunctionEventForecaster(nn.Module):
                 c = c.to(device)
                 
                 self.hidden[module_name] = (h.squeeze(0), c.squeeze(0))
-            elif 'gru' in module_name:
+            elif ('gru' in module_name) or ('mgu' in module_name):
 
                 h = torch.zeros(module.num_layers, batch_size, module.hidden_size)
                 h = h.to(device)
@@ -921,7 +925,7 @@ class ConjunctionEventForecaster(nn.Module):
         # Iterate over all modules to perform the forward operation.
         for module_name, module in self.model.items():
 
-            if ('lstm' in module_name) or ('gru' in module_name):
+            if ('lstm' in module_name) or ('gru' in module_name) or ('mgu' in module_name):
 
                 # Get size of inputs tensor.
                 # batch_size, x_length_max, n_features = x.size()
