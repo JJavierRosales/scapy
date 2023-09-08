@@ -351,14 +351,14 @@ class LSTM(nn.Module):
         return output_layer, (hstates, cstates)
 
     
-#%% CLASS: GRU
-class GRU(nn.Module):
-    """Adapted nn.GRU class that allows the use of custom GRU cells.
+#%% CLASS: GU
+class GU(nn.Module):
+    """Adapted nn.GRU and nn.MGU class that allows the use of custom cells.
     """
     def __init__(self, input_size:int, hidden_size:int, cell, 
         batch_first:bool=True, num_layers:int=1, 
         dropout:float=0.0, **cell_args:dict) -> None:
-        """Initialize adapted LSTM class.
+        """Initialize adapted GU class.
 
         Args:
             input_size (int): Number of input features.
@@ -371,9 +371,9 @@ class GRU(nn.Module):
             greater than 1. Defaults to None.
         """
     
-        super(GRU, self).__init__()
+        super(GU, self).__init__()
         
-        # Get all GRU layers in a list using the RNNLayer constructor.
+        # Get all GU layers in a list using the RNNLayer constructor.
         layers = [RNNLayer(cell = cell, 
                            input_size = input_size, 
                            hidden_size = hidden_size, 
@@ -541,6 +541,5 @@ class GRU(nn.Module):
         hstates = torch.stack(output_hstates) if self.num_layers > 1 \
                                 else output_hstates[0]
         
-        # Return the outputs of the LSTM and the hidden states for every GRU 
-        # layer.
+        # Return the outputs and hidden states for every GU layer.
         return output_layer, hstates

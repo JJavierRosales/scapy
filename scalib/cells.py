@@ -597,9 +597,11 @@ class LSTM_FB1(nn.Module):
             setattr(self,f'gate_{gate}_h',
                 nn.Linear(in_features = self.hidden_size, 
                           out_features = self.hidden_size, 
-                          bias = True if gate!='forget' else False)+
-                BiasLayer(hidden_size, 1 if gate=='forget' else None))
-        
+                          bias = True if gate!='forget' else False))
+
+            setattr(self,f'gate_{gate}_b',
+                BiasLayer(input_size = hidden_size, 
+                        bias_value = 1 if gate=='forget' else None))
         
     def _forward_gate(self, gate:str, x:torch.TensorFloat, h:torch.TensorFloat, 
             input_gate:torch.TensorFloat = None,
@@ -638,7 +640,9 @@ class LSTM_FB1(nn.Module):
         # Get gate components for the input x and hidden states h.
         x = getattr(self, f'gate_{gate}_x')(x)
         h = getattr(self, f'gate_{gate}_h')(h)
-        
+
+        # Compute bias
+        b = getattr(self, f'gate_{gate}_b')(x + h)
         
         if gate=='cell':
             
@@ -659,9 +663,9 @@ class LSTM_FB1(nn.Module):
             
             return c_next
         else:
-        
+
             # Apply sigmoid function to gate.
-            return self._sigmoid(x + h)
+            return self._sigmoid(x + h + b)
    
 
     def forward(self, x:torch.TensorFloat, hidden_states:tuple) -> tuple:
@@ -829,7 +833,7 @@ class LSTM_CIFG(nn.Module):
         # User input and forget gates to forget old context and learn new 
         # context (cell information).
         c_next = self._forward_gate(gate = 'cell', x = x, h = h_prev, 
-                    input_gate = i, forget_gate = f, c_prev = c_prev)
+                    input_gate = i, c_prev = c_prev)
                     
         # Get outputs from the main output gate.
         o = self._forward_gate(gate = 'output', x = x, h = h_prev)
@@ -931,7 +935,7 @@ class LSTM_PC(nn.Module):
         # Get gate components for the input x and hidden states h.
         x = getattr(self, f'gate_{gate}_x')(x)
         h = getattr(self, f'gate_{gate}_h')(h)
-        
+
         
         if gate=='cell':
             
@@ -973,21 +977,23 @@ class LSTM_PC(nn.Module):
 
         # Get hidden states from t-1.
         h_prev, c_prev = hidden_states
-        
-        
+
         # Get outputs from input gate (to know what to learn).
-        i = self._forward_gate(gate = 'input', x = x, h = h_prev)
-        
+        i = self._forward_gate(gate = 'input', x = x, h = h_prev, 
+                               c_prev = c_prev)
+
         # Get outputs from forget gate (to know what to forget).
-        f = self._forward_gate(gate = 'forget', x = x, h = h_prev)
-        
+        f = self._forward_gate(gate = 'forget', x = x, h = h_prev, 
+                               c_prev = c_prev)
+
         # User input and forget gates to forget old context and learn new 
         # context (cell information).
         c_next = self._forward_gate(gate = 'cell', x = x, h = h_prev, 
                     input_gate = i, forget_gate = f, c_prev = c_prev)
-                    
+           
         # Get outputs from the main output gate.
-        o = self._forward_gate(gate = 'output', x = x, h = h_prev)
+        o = self._forward_gate(gate = 'output', x = x, h = h_prev, 
+                               c_prev = c_next)
         
         # Produce next hidden output
         h_next = o * self._tanh(c_next)
