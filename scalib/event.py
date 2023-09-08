@@ -710,8 +710,11 @@ class ConjunctionEventsDataset(EventsPlotting):
         if only_numeric:
             df = df.select_dtypes(include=['int', 'float64', 'float32'])
 
-        # Get all columns except from __DAYS_TO_TCA.
-        features = [f for f in list(df.columns) if f!='__DAYS_TO_TCA']
+        # Get all columns except from this list.
+        columns_excluded = ['__DAYS_TO_TCA', '__RISK', '__MAX_RISK_ESTIMATE', 
+                            '__MAX_RISK_SCALING']
+
+        features = [f for f in list(df.columns) if not f in columns_excluded]
 
         return features
 
