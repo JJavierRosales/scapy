@@ -460,9 +460,26 @@ class SyntheticDataGenerator():
             else:
                 self.filepath = filepath
 
+
+
+
         if filepath is None or \
             (os.path.exists(folderpath) and not os.path.exists(filepath)):
+            load_model = False
+        else:
+            load_model = True
 
+        if load_model:
+            try:
+                # Load parameters from existing files
+                self.load(filepath = self.filepath)
+            
+                print(f'Parameters loaded from {self.filepath}')
+            except:
+                load_model = False
+                pass
+
+        if not load_model:
             # Find best distribution that describes the feature
             best_stdist, _ = eda.find_best_distribution(data)
 
@@ -478,12 +495,7 @@ class SyntheticDataGenerator():
             # Save parameters in the filepath if provided.
             if filepath is not None: self.save(filepath=self.filepath)
 
-        else:
-            
-            # Load parameters from existing files
-            self.load(filepath = self.filepath)
-            
-            print(f'Parameters loaded from {self.filepath}')
+
         
 
     # Define kernel and underfitting_factor parameters as properties in the 
