@@ -633,11 +633,20 @@ class SyntheticDataGenerator():
             scale = self.dist_params['scale']
             arg = self.dist_params['arg_values']
 
-            # Get sane start and end points of distribution
-            start = self.dist.ppf(1e-3, *arg, loc=loc, scale=scale) \
-                if arg else self.dist.ppf(1e-3, loc=loc, scale=scale)
-            end = self.dist.ppf(1-1e-3, *arg, loc=loc, scale=scale) \
-                if arg else self.dist.ppf(1-1e-3, loc=loc, scale=scale)
+            # Initialize tolerance for the start and end limits
+            tol = 1e-3
+
+            while True:
+                try:
+                    # Get sane start and end points of distribution
+                    start = self.dist.ppf(tol, *arg, loc=loc, scale=scale) \
+                        if arg else self.dist.ppf(tol, loc=loc, scale=scale)
+                    end = self.dist.ppf(1-tol, *arg, loc=loc, scale=scale) \
+                        if arg else self.dist.ppf(1-tol, loc=loc, scale=scale)
+                    break
+                except:
+                    pass
+                tol *= 10
 
             # Build PDF and turn into pandas Series
             values = np.linspace(start, end, n_samples_pd)
@@ -660,7 +669,7 @@ class SyntheticDataGenerator():
 
     def plot_histogram(self, show_data:str='all', bins:int=25, xlabel:str=None, 
                        random_state:int = None, figsize:tuple=(6,3), 
-                       n_synthetic_samples:int = 1000, n_epd_samples:int = 1000,
+                       n_synthetic_samples:int = 2000, n_epd_samples:int = 1000,
                        show_probabilities:bool=True, filepath:str=None,
                        return_ax:bool = False, show_stats:bool=False):
 
@@ -749,7 +758,7 @@ class SyntheticDataGenerator():
 
         if filepath is not None: 
             print(f'Saving plot to: {filepath}')
-            fig.savefig(filepath = filepath, bbox_inches='tight')
+            fig.savefig(fname = filepath, bbox_inches='tight')
 
         if return_ax: return ax
 
