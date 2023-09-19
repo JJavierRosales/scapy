@@ -474,7 +474,7 @@ class SyntheticDataGenerator():
                 # Load parameters from existing files
                 self.load(filepath = self.filepath)
             
-                print(f'Parameters loaded from {self.filepath}')
+                # print(f'Parameters loaded from {self.filepath}')
             except:
                 load_model = False
                 pass
@@ -626,13 +626,25 @@ class SyntheticDataGenerator():
             synthetic_data = self.dist.rvs(*arg, 
                                            loc = loc, 
                                            scale = scale, 
-                                           size = n_samples, 
+                                           size = n_samples*2, 
                                            random_state = random_state)
         else:
 
-            synthetic_data = self.kde.sample(n_samples = n_samples, 
+            synthetic_data = self.kde.sample(n_samples = n_samples*2, 
                                              random_state = random_state)
             
+        # Limit the synthetic data to be always within the boundaries of
+        # actual data.
+        boundary_condition = (synthetic_data >= min(self.data)) & \
+                                (synthetic_data <= max(self.data))
+        
+        synthetic_data = synthetic_data[boundary_condition]
+        
+        # Select random values from the array.
+        synthetic_data = np.random.choice(synthetic_data, 
+                                            size=n_samples, 
+                                            replace = False)
+                
         self.synthetic_data = synthetic_data.flatten()
 
 
@@ -661,7 +673,10 @@ class SyntheticDataGenerator():
                 tol *= 10
 
             # Build PDF and turn into pandas Series
-            values = np.linspace(start, end, n_samples_pd)
+            values = np.linspace(min(self.data), max(self.data), n_samples_pd)
+            if min(self.data) > start:
+                values = np.linspace(start, end, n_samples_pd)
+
             epd = self.dist.pdf(values, loc=loc, scale=scale, *arg)
 
         else:
@@ -682,8 +697,10 @@ class SyntheticDataGenerator():
     def plot_histogram(self, show_data:str='all', bins:int=25, xlabel:str=None, 
                        random_state:int = None, figsize:tuple=(6,3), 
                        n_synthetic_samples:int = 2000, n_epd_samples:int = 1000,
-                       show_probabilities:bool=True, filepath:str=None,
-                       return_ax:bool = False, show_stats:bool=False):
+                       show_probabilities:bool=True, show:bool=False,
+                       filepath:str=None, return_ax:bool = False, 
+                       show_stats:bool=False, ax:plt.Axes = None, 
+                       show_legend:bool=True):
 
         
         # Get synthetic data if required.
@@ -691,7 +708,8 @@ class SyntheticDataGenerator():
             self.generate_data(n_synthetic_samples, random_state)
 
         # Initialize plot object.
-        fig, ax = plt.subplots(figsize = figsize)
+        if ax is None:
+            fig, ax = plt.subplots(figsize = figsize)
 
         if show_data=='all':
             hist_data = [self.data, self.synthetic_data]
@@ -710,8 +728,8 @@ class SyntheticDataGenerator():
                              f' either "all", "actual", or "synthetic".')
             
         # Create histogram.
-        ax.hist(hist_data, bins, label=hist_labels, color=hist_colors, 
-                density=show_probabilities)
+        n_hist_data, _, _ = ax.hist(hist_data, bins, label=hist_labels, 
+                                color=hist_colors, density=show_probabilities)
         
         # Add statistical summary next to the plot
         if show_stats: 
@@ -753,26 +771,29 @@ class SyntheticDataGenerator():
             self.probability_density(n_epd_samples)
 
             ax.plot(self.epd_values, label="PDF", color = "tab:orange")
+            ax.set_ylim(0, max([max(hd) for hd in n_hist_data])*1.25)
 
         # Set Y-axis label
         ylabel = 'Probability density' if show_probabilities else 'Count'
         ax.set_ylabel(ylabel)
 
-        if xlabel is not None:
-            ax.set_xlabel(xlabel)
-        else:
-            ax.set_xlabel('Feature')
+        if xlabel is not None: ax.set_xlabel(xlabel)
             
         ax.grid(True, linestyle="dashed", alpha=0.5)
-        ax.legend(loc="best", fontsize=8)
+        if show_legend: ax.legend(loc="best", fontsize=8)
 
         plt.tight_layout()
 
         if filepath is not None: 
-            print(f'Saving plot to: {filepath}')
-            fig.savefig(fname = filepath, bbox_inches='tight')
+            # print(f'Saving plot to: {filepath}')
+            plt.savefig(fname = filepath, bbox_inches='tight')
 
         if return_ax: return ax
+
+        # if show:
+        #     plt.show()
+        # else:
+        #     plt.close()
 
     def __repr__(self) -> str:
         """Print readable information about the synthetic data.
