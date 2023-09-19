@@ -597,6 +597,10 @@ class ConjunctionEventForecaster(nn.Module):
             np.ndarray: NumPy array containing the MSE loss values per batch.
         """
 
+        def MAPELoss(output:torch.Tensor, target:torch.Tensor, 
+                     epsilon:float=1e-8):
+
+            return torch.mean(torch.abs((target - output) / (target+epsilon)))
 
         # Get test dataset with normalized features using the stats metrics. 
         test_set = DatasetEventDataset(event_set = events_test, 
@@ -633,11 +637,13 @@ class ConjunctionEventForecaster(nn.Module):
         mae_criterion = nn.L1Loss()
         mse_criterion = nn.MSELoss(reduction='mean')
         sse_criterion = nn.MSELoss(reduction='sum')
+        mape_criterion = MAPELoss
 
         # Initialize dictionary with the different regression metrics.
         results = {'sse':np.zeros((len(test_loader))),
                    'mse':np.zeros((len(test_loader))),
                    'mae':np.zeros((len(test_loader))),
+                   'mape':np.zeros((len(test_loader))),
                    'bic':np.zeros((len(test_loader)))}
 
         # Iterate over all items in the test_loader
@@ -679,7 +685,8 @@ class ConjunctionEventForecaster(nn.Module):
                 results['sse'][t] = float(sse_criterion(output, target))
                 results['mse'][t] = float(mse_criterion(output, target))
                 results['mae'][t] = float(mae_criterion(output, target))
-                results['bic'][t] = t_sz*np.log(results['sse'][t]/t_sz)+k*np.log(t_sz)
+                results['mape'][t] = float(mape_criterion(output, target))
+                results['bic'][t] = t_sz*np.log(results['mse'][t])+k*np.log(t_sz)
 
         return results
 
