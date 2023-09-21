@@ -134,7 +134,7 @@ def kelvins_challenge_events(filepath:str, num_events:int = None,
                     feature = 'RELATIVE_{}_{}'.format(state, rtn)
                     cdm[feature] = k_cdm[feature.lower()] 
 
-            # Get object specific compulsory features.
+            # Get object specific features.
             for k, v in {'OBJECT1':'t', 'OBJECT2':'c'}.items():
 
                 # Get covariance matrix elements for both objects (lower 
@@ -174,10 +174,13 @@ def kelvins_challenge_events(filepath:str, num_events:int = None,
                     cdm['{}_TIME_LASTOB_{}'.format(k, t).upper()] = \
                         CDM.datetime_to_str(time_lastob)
 
+            cdm['OBJECT1_OBJECT_TYPE'] = 'PAYLOAD'
             cdm['OBJECT2_OBJECT_TYPE'] = k_cdm['c_object_type']
 
+            cdm['COLLISION_PROBABILITY'] = k_cdm['risk']
+
             values_extra = {}
-            for feature in ['risk', 'max_risk_estimate', 'max_risk_scaling']:
+            for feature in ['max_risk_estimate', 'max_risk_scaling']:
                 if not feature in list(k_cdm.keys()): continue
                 values_extra.update({f'__{feature.upper()}': k_cdm[feature]})
 

@@ -49,8 +49,8 @@ class ConjunctionDataMessage():
         if set_defaults:
             self.set_header('CCSDS_CDM_VERS', '1.0')
             self.set_header('CREATION_DATE', dt.utcnow().isoformat())
-            self.set_object(0, 'OBJECT', 'OBJECT1')
-            self.set_object(1, 'OBJECT', 'OBJECT2')
+            # self.set_object(0, 'OBJECT', 'OBJECT1')
+            # self.set_object(1, 'OBJECT', 'OBJECT2')
 
         if filepath:
             self.copy_from(ConjunctionDataMessage.load(filepath))
@@ -149,7 +149,10 @@ class ConjunctionDataMessage():
             pd.DataFrame: Pandas DataFrame containing all CDM information.
         """
         data = self.to_dict()
-        return pd.DataFrame(data, index=[0])
+
+        df = pd.DataFrame(data, index=[0])
+
+        return df
 
     def load(filepath:str) -> ConjunctionDataMessage:
         """Create a CDM object from a text file in KVN format.
@@ -695,20 +698,3 @@ class ConjunctionDataMessage():
 #         else:
 #             # Return value assigned to the CDM key.
 #             return getattr(self, '_values_' + cluster)[key]
-
-    
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
