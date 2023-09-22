@@ -10,7 +10,7 @@ cdm_features = {
     'MESSAGE_FOR':                  dict(cluster='header', obligatory=False, dtype='string'), 
     'MESSAGE_ID':                   dict(cluster='header', obligatory=True, dtype='string'),
 
-    'TCA':                          dict(cluster='relative_metadata', obligatory=True, dtype='string'), 
+    'TCA':                          dict(cluster='relative_metadata', obligatory=True, dtype='datetime64[ns]'), 
     'MISS_DISTANCE':                dict(cluster='relative_metadata', obligatory=True, dtype='float'), 
     'RELATIVE_SPEED':               dict(cluster='relative_metadata', obligatory=False, dtype='float'), 
     'RELATIVE_POSITION_R':          dict(cluster='relative_metadata', obligatory=False, dtype='float'), 
