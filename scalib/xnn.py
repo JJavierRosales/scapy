@@ -5,8 +5,10 @@ from typing import Union
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, TensorDataset
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
+
+from sklearn.model_selection import train_test_split
 
 import os
 import numpy as np
@@ -21,6 +23,28 @@ from .event import ConjunctionEventsDataset as CED
 from .cdm import ConjunctionDataMessage as CDM
 
 
+class Data(TensorDataset):
+  def __init__(self, X, y):
+    self.inputs = X
+    self.outputs = y
+
+    self.len = self.inputs.shape[0]
+
+  def split(self, split_size:float=0.8, shuffle:bool=True, random_state:int=42):
+
+    Xi, Xj, yi, yj = train_test_split(self.inputs, self.outputs, 
+                                      train_size = split_size, 
+                                      random_state = random_state, 
+                                      shuffle = shuffle)
+    
+    return Data(Xi, yi), Data(Xj, yj)
+  
+  def __getitem__(self, index):
+    return self.inputs[index], self.outputs[index]
+  
+  def __len__(self):
+    return self.len
+  
 #%%CLASS: CosineWarmupScheduler
 # https://github.com/pytorch/pytorch/blob/main/torch/optim/lr_scheduler.py
 class CosineWarmupScheduler(optim.lr_scheduler._LRScheduler):
@@ -968,89 +992,438 @@ class ConjunctionEventForecaster(nn.Module):
 
 #%% CLASS: CollisionRiskProbabilityEstimator
 # Define Collision Risk Probability Estimator
-class CollisionRisk(nn.Module):
+class CollisionRiskProbabilityEstimator(nn.Module):
 
-    def __init__(self, emb_szs, n_cont, out_sz, layers, p=0.5):
+    def __init__(self, input_size:int, output_size:int, network:list):
         
         # Inherit attributes from nn.Module class
         super().__init__()
+
+        # Initialise input and output sizes
+        self.input_size = input_size
+        self.output_size = output_size
+
+        # Set model using the modules parameter
+        self.model = network
+
+        # Initialize dictionary to store training results
+        self._learn_results = {'total_iterations':[],
+                               'validation_loss':[],
+                               'training_loss':[],
+                               'epoch':[],
+                               'learning_rate':[],
+                               'batch_size':[]}
+
+                               
+    def plot_loss(self, filepath:str = None, figsize:tuple = (6, 3), 
+                  log_scale:bool = False, validation_only:bool=False, 
+                  plot_lr:bool=False, label:str = None,
+                  ax:plt.Axes = None, return_ax:bool = False) -> None:
+        """Plot ANN loss in the training set (orange) and validation set (blue) 
+        vs number of iterations during model training.
+
+        Args:
+            filepath (str, optional): Path where the plot is saved. Defaults to 
+            None.
+            figsize (tuple, optional): Size of the plot. Defaults to (6 ,3).
+            log_scale (bool, optional): Flag to plot Loss using logarithmic 
+            scale. Defaults to False.
+            plot_lr (bool, optional): Include learning rate evolution during
+            training. Defaults to False.
+        """
+
+        # Apply logarithmic transformation if log_scale is set to True. This 
+        # helps to see the evolution when variations between iterations are 
+        # small.
+        iterations = self._learn_results['total_iterations']
+
         
-        ########################################################################
-        # Instanciate functions to use on the forward operation:
+        # Create axes instance if not passed as a parameter.
+        if ax is None: fig, ax = plt.subplots(figsize=figsize)
+
+        # Plot loss vs iterations.
+        colors = ['tab:orange', 'tab:blue']
+
+        for p, process in enumerate(['training', 'validation']):
+
+            if process=='training' and validation_only: continue
+
+            loss = self._learn_results[f'{process}_loss']
+            loss = pd.Series(np.log(loss) if log_scale else loss, 
+                                iterations).drop_duplicates(keep='first')
+
+            ax.plot(loss, color = colors[p], 
+                    label = process.capitalize() if label is None else label)
+
+            # Set X-axis limits.
+            if process=='validation': ax.set_xlim(0, loss.index.max())
         
-        # self.embeds: Creates a list of pre-configured Embedding operations (it 
-        # is configured by passing the number of categories ni and the length of
-        #  the embedding nf)
-        self.embeds = nn.ModuleList([nn.Embedding(ni, nf) for ni,nf in emb_szs])
-        
-        # self.emb_drop: Cancels a proportion p of the embeddings.
-        self.emb_drop = nn.Dropout(p)
-        
-        # self.bn_cont = Normalizes continuous features. This function is 
-        # configured by passing the number of continuous features to normalize.
-        self.bn_cont = nn.BatchNorm1d(n_cont)
-        
-        ########################################################################
-        # Count total number of embeddings (Total number of vector components 
-        # for every feature)
-        n_emb = sum((nf for ni,nf in emb_szs))
-        
-        # Compute total number of inputs to pass to the initial layer (data 
-        # point = Nb. of embeddings + Nb. of continuous variables)
-        n_in = n_emb + n_cont
-        
-        # Run through every layer to set up the operations to perform per layer.
-        # (i.e. layers=[100, 50, 200])
-        layerlist = []
-        for l, n_neurons in enumerate(layers):
-            # On layer l, which contains n_neurons, perform the following 
-            # operations:
-            # 1. Apply Linear neural network model regression (fully connected 
-            # network -> z = Sum(wi*xi+bi))
-            layerlist.append(nn.Linear(n_in,n_neurons))
+
+        # Plot learning rate if required
+        if plot_lr:
+
+            # Get learning rate
+            lr = pd.Series(self._learn_results['learning_rate'], 
+                           iterations)
             
-            # 2. Apply ReLU activation function (al(z))
-            layerlist.append(nn.ReLU(inplace=True))
-            
-            # 3. Normalize data using the n_neurons
-            layerlist.append(nn.BatchNorm1d(n_neurons))
-            
-            # 4. Cancel out a random proportion p of the neurons to avoid 
-            # overfitting
-            layerlist.append(nn.Dropout(p))
-            
-            # 5. Set new number of input features n_in for the next layer l+1.
-            n_in = n_neurons
+            # Add right axis to plot learning rate.
+            ax_lr = ax.twinx()
+
+            ax_lr.set_ylabel('Learning rate', color = 'tab:green')  
+            ax_lr.set_ylim(0, lr.max()*1.25)
+            ax_lr.plot(lr, label='Learning rate', color = 'tab:green')
+
+        # Set axes labels.
+        ax.set_xlabel('Number of iterations')
+        ax.set_ylabel('MSE Loss')
+
+        # Set legend and grid for better visualization.
+        ax.legend(fontsize=8)
+        ax.grid(True, linestyle='--')
+
+        # Save figure if filepath is provided.
+        if filepath is not None:
+            print('Plotting to file: {}'.format(filepath))
+            fig.savefig(filepath)
+
+        if return_ax:
+            return ax
         
-        # Set the last layer of the list which corresponds to the final output
-        layerlist.append(nn.Linear(layers[-1],out_sz))
+
+    def learn(self, data:TensorDataset, epochs:int = 10, lr:float = 1e-3, 
+              batch_size:int = 8, device:str = None, 
+              valid_proportion:float = 0.15, filepath:str = None,
+              epoch_step_checkpoint:int = None, **kwargs) -> None:
+        """Train ANN model.
+
+        Args:
+            data (TensorDataset): List of Conjunction Event objects to use for 
+            training (including validationd data).
+            epochs (int, optional): Number of epochs used for training. Defaults 
+            to 10.
+            lr (float, optional): Learning rate. Defaults to 1e-3.
+            batch_size (int, optional): Batch size. Defaults to 8.
+            device (str, optional): Device where torchs are allocated. Defaults 
+            to 'cpu'.
+            valid_proportion (float, optional): Proportion of all data used for 
+            validation (value must be between 0 and 1). Defaults to 0.15.
+            filepath (str, optional): Filepath for the model 
+            to be saved. If None, model is not saved. Defaults to None.
+            epoch_step_checkpoint (int, optional): Number of epochs to process 
+            before saving a new checkpoint. Only applicable if filepath is
+            not None. Defaults to None.
+
+        Raises:
+            ValueError: valid_proportion is not in the range (0, 1).
+            RuntimeError: Validation set does not contain any event as a result 
+            of valid_proportion being too low.
+        """
+
         
-        # Instantiate layers as a Neural Network sequential task
-        self.layers = nn.Sequential(*layerlist)
-    
-    def forward(self, x_cat, x_cont):
-        # Initialize embeddings list
-        embeddings = []
+        # Define the device on which the torch will be allocated:
+        device = torch.device('cpu') if device is None else torch.device(device)
+
+        self._device = device
+        self.to(device)
+
+        # Get number of parameters in the model.
+        num_params = sum(p.numel() for p in self.parameters())
+        print(f'Number of learnable parameters of the model: {num_params:,}')
+
+        # Check valid_proportion is between 0.0 and 1.0
+        if valid_proportion < 0 or valid_proportion > 1.0:
+            raise ValueError('Parameter valid_proportion ({})'+ \
+                             ' must be greater than 0 and lower than 1' \
+                             .format(valid_proportion))
+
+        # Compute the size of the validation set from valid_proportion.
+        data_train, data_valid = data.split(split_size = 1-valid_proportion)
         
-        # Apply embedding function e from self.embeds to the category i
-        # in x_cat array
-        for i,e in enumerate(self.embeds):
-            embeddings.append(e(x_cat[:,i]))
+        # Check size of validation set is greater than 0.
+        if len(data_valid) == 0:
+            raise RuntimeError('Validation set size is 0 for the given' + \
+                               ' valid_proportion ({}) and number of ' + \
+                               'events ({})' \
+                               .format(valid_proportion, len(data)))
+
+        # Get loader objects for training and validation sets. The DataLoader 
+        # class works by creating an iterable dataset object and iterating over 
+        # it in batches, which are then fed into the model for processing. The 
+        # object it creates has the shape (batches, items) where items are the 
+        # a number of elements n = int(len(Dataset)/batch_size) taken from the 
+        # Dataset passed into the class.
+        train_loader = DataLoader(data_train, batch_size = batch_size, 
+                                  shuffle = True)
+        valid_loader = DataLoader(data_valid, batch_size = len(data_valid), 
+                                  shuffle = True)
         
-        # Concatenate embedding sections into 1
-        x = torch.cat(embeddings, 1)
+
+        # Set-up optimizer and criterion.
+        self.optimizer = optim.Adam(self.parameters(), lr = lr)
+        self.criterion = nn.MSELoss()
+
+
+        # Check if the same model already exists. If it does, load model 
+        # parameters.
+        if filepath is not None and os.path.exists(filepath):
+            self.load(filepath)
+            self.optimizer.param_groups[0]['lr'] = lr
+            print('\nModel parameters loaded from {}\n'
+                  ' - Total epochs       = {}\n'
+                  ' - Total iterations   = {}\n'
+                  ' - Validation loss    = {:6.4e}\n'
+                  ' - Last learning rate = {:6.4e}\n'
+                  ''.format(filepath,
+                            self._learn_results['epoch'][-1],
+                            self._learn_results['total_iterations'][-1],
+                            self._learn_results['validation_loss'][-1],
+                            self._learn_results['learning_rate'][-1]))
+
+        # Set training mode ON to inform layers such as Dropout and BatchNorm, 
+        # which are designed to behave differently during training and 
+        # evaluation. For instance, in training mode, BatchNorm updates a moving 
+        # average on each new batch; whereas, for evaluation mode, these updates 
+        # are frozen.
+        self.train()
         
-        # Apply dropout function to the embeddings torch
-        x = self.emb_drop(x)
+        if len(self._learn_results['total_iterations']) == 0:
+            total_iters = 0
+            last_epoch = 0
+        else:
+            total_iters = self._learn_results['total_iterations'][-1]
+            last_epoch = self._learn_results['epoch'][-1]
+
+
+        # Initialize progress bar to show training progress.
+        n_batches = len(train_loader)
+        pb_epochs = utils.ProgressBar(iterations = range(epochs*n_batches),
+                title = 'TRAINING COLLISION RISK PROBABILITY ESTIMATOR MODEL:')
+
+        for epoch in range(epochs):
+
+            with torch.no_grad():
+                for _, (inputs, targets) in enumerate(valid_loader):
+
+                    # Allocate events and event_lengths tensors to the device
+                    # defined by the model.
+                    inputs = inputs.to(device)
+                    targets = targets.to(device)
+
+                    # Get batch_size from event_lengths as it can be smaller for
+                    # the last minibatch of an epoch.
+                    batch_size = targets.nelement()
+
+                    # Forecast next CDMs of the mini-batch using the inputs. The 
+                    # model also requires a second parameter with the number of 
+                    # CDMs per event object in order to pack padded sequences to 
+                    # optimize computation.
+                    outputs = self.forward(inputs)
+
+                    # Compute loss using the criterion and add it to the array.
+                    self._loss = self.criterion(outputs, targets)
+                    valid_loss = float(self._loss)
+
+            # Iterate over all batches containes in the training loader. Every 
+            # batch (t_batch) contains an equal number of events which in 
+            # turn may contain a different number of CDM objects.
+            for t_batch, (inputs, targets) in enumerate(train_loader):
+                total_iters += 1
+                relative_iters = (epoch*n_batches + t_batch + 1)
+
+                # Allocate events and event_lengths tensors to the device 
+                # defined by the model.
+                inputs = inputs.to(device)
+                targets = targets.to(device)
+
+                # Get batch_size from event_lengths as it can be smaller for the 
+                # last minibatch of an epoch.
+                batch_size = targets.nelement() 
+
+
+                # Clear all the gradients of all the parameters of the model.
+                self.optimizer.zero_grad()
+                outputs = self.forward(inputs)
+
+                # Compute MSE loss using criterion and store it in an array.
+                self._loss = self.criterion(outputs, targets)
+                train_loss = float(self._loss)
+
+                # Get learning rate used
+                lr = self.optimizer.param_groups[0]['lr']
+
+                # Backpropagate MSE loss.
+                self._loss.backward(retain_graph=True)
+
+                # Update model hyperparameters taking into account the loss.
+                self.optimizer.step()
+                # lr_scheduler.step()
+
+                # Update progress bar.
+                description = f'E({epoch+1}/{epochs}) ' + \
+                    f'B({t_batch+1}/{n_batches}) | ' + \
+                    f'Loss > T({train_loss:6.4e}) ' + \
+                    f'V({valid_loss:6.4e})'
+
+                pb_epochs.refresh(i = relative_iters, 
+                                  description = description,
+                                  nested_progress = True)
+                
+
+                # Save training information.
+                self._learn_results['total_iterations'].append(total_iters)
+                self._learn_results['validation_loss'].append(valid_loss)
+                self._learn_results['training_loss'].append(train_loss)
+                self._learn_results['epoch'].append(last_epoch + epoch + 1)
+                self._learn_results['learning_rate'].append(lr)
+                self._learn_results['batch_size'].append(batch_size)
+
+                if epoch_step_checkpoint is not None and \
+                   ((epoch+1) % epoch_step_checkpoint) == 0 and \
+                    (epoch+1) < epochs:
+                    pb_epochs.refresh(i = relative_iters, 
+                                  description = 'Saving checkpoint...',
+                                  nested_progress = True)
+                    self.save(filepath = filepath)
+                    pb_epochs.refresh(i = relative_iters, 
+                                      description = description,
+                                      nested_progress = True)
+                    
+
+        # Print message at the end of the mini batch.
+        pb_epochs.refresh(i = relative_iters, description = description)
+
+        if filepath is not None:
+            print(f'\nSaving model parameters ...', end='\r')
+            self.save(filepath = filepath)
+            print(f'Saving model parameters ... Done.')
+
+    def save(self, filepath:str, only_parameters:bool=True):
+        """Save model to an external file.
+
+        Args:
+            filepath (str): Path where the model is saved.
+            only_parameters (bool, optional): Save only models parameters or the 
+            entire model. Defaults to True.
+        """
+        if only_parameters:
+            torch.save({
+                'num_params': sum(p.numel() for p in self.parameters()),
+                'epochs': self._learn_results['epoch'][-1],
+                'model': self.state_dict() if only_parameters else self,
+                'optimizer': self.optimizer.state_dict() if only_parameters \
+                    else self.optimizer,
+                'loss': self._loss,
+                'learn_results': self._learn_results,
+            },  filepath)
+        else:
+            torch.save(self, filepath)
+
+    def load(self, filepath:str):
+        """Load model instance or model parameters.
+
+        Args:
+            filepath (str): Path of the model source file.
+        """
+
+        if 'parameters' in filepath:
+
+            # Get the checkpoint file
+            torch_file = torch.load(filepath)
+
+            self.load_state_dict(torch_file['model'])
+            if not hasattr(self, 'optimizer'):
+                self.optimizer = optim.Adam(self.parameters(), lr = 1e-3)
+            self.optimizer.load_state_dict(torch_file['optimizer'])
+            self._loss = torch_file['loss']
+            self._learn_results = torch_file['learn_results']
+        else:
+            self = torch.load(filepath)
+
+    def test(self, data_test:TensorDataset, test_batch_size:int) -> np.ndarray:
+        """Compute MSE loss on a test set using the trained model.
+
+        Args:
+            data_test (TensorDataset): Conjunction Data Messages dataset.
+            test_batch_size (int): Batch size.
+
+        Returns:
+            np.ndarray: NumPy array containing the MSE loss values per batch.
+        """
+
+        def MAPELoss(output:torch.Tensor, target:torch.Tensor, 
+                     epsilon:float=1e-8):
+
+            return torch.mean(torch.abs((target - output) / (target+epsilon)))
+
         
-        # Normalize continuous variables
-        x_cont = self.bn_cont(x_cont)
+        if test_batch_size > len(data_test):
+            test_batch_size = len(data_test)
+            warnings.warn(f'\nParameter test_batch_size ({test_batch_size})'
+                          f'can only be less or equal to the number of '
+                          f'items on events_set input ({len(data_test)})'
+                          f'\nSetting new value for test_batch_size='
+                          f'{len(data_test)}.')
         
-        # Concatenate embeddings with continuous variables into one torch
-        x = torch.cat([x, x_cont], 1)
-        
-        # Process all data points with the layers functions (sequential of 
-        # operations)
-        x = self.layers(x)
+        # Get loader objects for test set. The DataLoader class works by 
+        # creating an iterable dataset object and iterating over it in batches, 
+        # which are then fed into the model for processing. The object it 
+        # creates has the shape (batches, items) where items are the a number of 
+        # elements n = int(len(Dataset)/batch_size) taken from the Dataset 
+        # passed into the class.
+        test_loader = DataLoader(dataset = data_test, 
+                                 batch_size = test_batch_size, 
+                                 shuffle = True)
+
+
+        # Set-up device and criterion.
+        device = list(self.parameters())[0].device
+
+        # Get number of parameters
+        k = sum(p.numel() for p in self.parameters())
+
+        # Define all criterions required for the regression metrics.
+        mae_criterion = nn.L1Loss()
+        mse_criterion = nn.MSELoss(reduction='mean')
+        sse_criterion = nn.MSELoss(reduction='sum')
+        mape_criterion = MAPELoss
+
+        # Initialize dictionary with the different regression metrics.
+        results = {'sse':np.zeros((len(test_loader))),
+                   'mse':np.zeros((len(test_loader))),
+                   'mae':np.zeros((len(test_loader))),
+                   'mape':np.zeros((len(test_loader))),
+                   'bic':np.zeros((len(test_loader)))}
+
+        # Iterate over all items in the test_loader
+        with torch.no_grad():
+            for t, (inputs, targets) in enumerate(test_loader):
+
+                # Allocate events and event_lengths tensors to the device
+                # defined by the model.
+                inputs = inputs.to(device)
+                targets = targets.to(device)
+
+                # Estimate collision probability risk of the mini-batch using 
+                # the inputs.
+                outputs = self.forward(inputs)
+
+                # Get test size
+                t_sz = len(outputs)
+
+                # Compute regression metrics using the criterion and add it to 
+                # the array.
+                results['sse'][t] = float(sse_criterion(outputs, targets))
+                results['mse'][t] = float(mse_criterion(outputs, targets))
+                results['mae'][t] = float(mae_criterion(outputs, targets))
+                results['mape'][t] = float(mape_criterion(outputs, targets))
+                results['bic'][t] = t_sz*np.log(results['mse'][t])+k*np.log(t_sz)
+
+        return results
+
+    def forward(self, x):
+
+        # Iterate over all modules to perform the forward operation.
+        for layer in self.model:
+            x = layer(x)
         
         return x
