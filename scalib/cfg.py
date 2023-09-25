@@ -176,12 +176,37 @@ def get_features(by_cluster:bool=True, only_names:bool = False,
 
     return features if only_names else output
 
+def dtype_conversion():
+    # Cast columns as correct dtypes
+    convert_dict = dict()
+
+    # Iterate over all objects
+    for o in [1, 2]:
+
+        # Iterate over all features in a CDM
+        for feature, information in cdm_features.items():
+
+            # Get the cluster of the CDM data.
+            cluster = information['cluster']
+
+            if (cluster.startswith('header') or \
+                cluster.startswith('relative')) and o==1:
+                xfeature = feature
+            elif not (cluster.startswith('header') or \
+                        cluster.startswith('relative')):
+                xfeature = f'OBJECT{o}_{feature}'
+
+            if xfeature in convert_dict.keys(): continue
+            #if xfeature not in df.columns: continue
+            convert_dict[xfeature] = information['dtype']
+    return convert_dict
 
 
 # Declare global variable containing all keys within every cluster in a CDM.
 cdm_clusters = get_features()
 cdm_clusters_obligatory = get_features(suffix='obligatory', 
                                        **dict(obligatory=True))
+df_dtype_conversion = dtype_conversion()
 
 
 if __name__ == "__main__":
