@@ -23,10 +23,13 @@ from .event import ConjunctionEventsDataset as CED
 from .cdm import ConjunctionDataMessage as CDM
 
 
-class Data(TensorDataset):
+class Dataset(TensorDataset):
   def __init__(self, X, y):
     self.inputs = X
     self.outputs = y
+
+    self.input_size = X.size(1)
+    self.output_size = y.size(1)
 
     self.len = self.inputs.shape[0]
 
@@ -37,13 +40,125 @@ class Data(TensorDataset):
                                       random_state = random_state, 
                                       shuffle = shuffle)
     
-    return Data(Xi, yi), Data(Xj, yj)
+    return Dataset(Xi, yi), Dataset(Xj, yj)
   
   def __getitem__(self, index):
     return self.inputs[index], self.outputs[index]
   
   def __len__(self):
     return self.len
+  
+  def __repr__(self) -> str:
+     description = f'TensorDataset(Inputs: {self.inputs.size(1)} ' + \
+                   f'| Outputs: {self.outputs.size(1)} ' + \
+                   f'| Entries: {len(self.inputs)})'
+     return description
+
+class TensorDatasetFromDataFrame():
+    def __init__(self, df:pd.DataFrame, output_features:list, input_features:list, 
+                 normalize_inputs:bool=True):
+        
+        # Remove empty columns
+        df.dropna(inplace=True, axis=1, how='all')
+
+        # Initialise list with the categorical features and numerical features
+        self.cat_features = []
+        self.num_features = []
+        undefined_features = []
+
+        for f in input_features:
+            if not f in df.columns: continue
+
+            if df[f].dtype=='category':
+                self.cat_features.append(f)
+            elif f in df._get_numeric_data().columns:
+                self.num_features.append(f)
+            elif not f in output_features:
+                undefined_features.append(f)
+
+        if len(undefined_features)>0:
+            unsupported_dtypes = []
+            for f in undefined_features:
+                unsupported_dtypes.append(df[f].dtype)
+
+            raise ValueError(f'Some features ({undefined_features}) have ' + \
+                             f'unsupported dtypes ({set(unsupported_dtypes)}).')
+        
+        # Check that all output features are part of the input dataframe.
+        for o in output_features:
+           if not o in df.columns:
+              undefined_features.append(o)
+        
+        self.input_features = self.cat_features + self.num_features
+        self.output_features = output_features
+
+        self.df_outputs = df[self.output_features]
+        self.df_inputs = df[self.input_features]
+
+        # Get Torch for output features
+        self.outputs = torch.tensor(self.df_outputs.to_numpy(), 
+                        dtype=torch.float, 
+                        requires_grad=True) 
+
+        # Get Torch for all continuous features
+        X_num = torch.tensor(self.df_inputs[self.num_features].to_numpy(), 
+                            dtype=torch.float, 
+                            requires_grad=True)
+        X_num = torch.nan_to_num(X_num)
+
+        # Normalise continuous variables
+        if normalize_inputs:
+            bn_nums = nn.BatchNorm1d(len(self.num_features))
+            X_num = bn_nums(X_num)
+
+        # Get Torch for all categorical features
+        cats = np.stack([self.df_inputs[f].cat.codes.values for f in self.cat_features], 1)
+        cats = torch.tensor(cats, dtype=torch.int)
+
+        # This will set embedding sizes for the categorical columns:
+        # an embedding size is the length of the array into which every category
+        # is converted
+        cat_szs = [len(self.df_inputs[f].cat.categories) for f in self.cat_features]
+        emb_szs = [(size, min(50, (size+1)//2)) for size in cat_szs]
+
+        # Initialize list of embedding operations.
+        #  - nuv = Number of unique vectors
+        #  - nvc = Number of vector componets
+        embeddings = nn.ModuleList([nn.Embedding(nuv, nvc) for nuv, nvc in emb_szs])
+
+        # Initialize embeddings list
+        embeddings_tensors = []
+
+        # Apply embedding operation to every column of categorical tensor
+        for i, embedding in enumerate(embeddings):
+            #print(cats[:,i])
+            embeddings_tensors.append(embedding(cats[:,i]))
+
+        # Concatenate embedding sections into 1
+        X_cat = torch.cat(embeddings_tensors, 1)
+    
+        # Concatenate embeddings with continuous variables into one torch
+        self.inputs = torch.cat([X_cat, X_num], 1)
+
+        # Get final dataset with inputs and targets
+        self.data = Dataset(self.inputs, self.outputs)
+
+        self.len = self.inputs.shape[0]
+        self.input_size = self.data.input_size
+        self.output_size = self.data.output_size
+
+    def __repr__(self) -> str:
+       description = f'TensorDatasetFromDataFrame(' + \
+                     f'Inputs: {self.input_size} ' + \
+                     f'| Outputs: {self.output_size} ' + \
+                     f'| Entries: {len(self.inputs)})'
+       return description
+    
+    def __getitem__(self, index):
+      return self.inputs[index], self.outputs[index]
+    
+    def __len__(self):
+      return self.len
   
 #%%CLASS: CosineWarmupScheduler
 # https://github.com/pytorch/pytorch/blob/main/torch/optim/lr_scheduler.py
@@ -994,7 +1109,9 @@ class ConjunctionEventForecaster(nn.Module):
 # Define Collision Risk Probability Estimator
 class CollisionRiskProbabilityEstimator(nn.Module):
 
-    def __init__(self, input_size:int, output_size:int, network:list):
+    def __init__(self, input_size:int, output_size:int, layers:list, 
+                 bias:Union[bool, list] = True, act_functions = nn.ReLU(), 
+                 dropout_probs:Union[float, list] = 0.2):
         
         # Inherit attributes from nn.Module class
         super().__init__()
@@ -1002,9 +1119,46 @@ class CollisionRiskProbabilityEstimator(nn.Module):
         # Initialise input and output sizes
         self.input_size = input_size
         self.output_size = output_size
+        self.layers = layers
+
+        if isinstance(act_functions,list):
+            if len(act_functions)< len(layers):
+                raise ValueError(f'Length of act_functions parameter shall match the length of layers.')
+            
+        if isinstance(dropout_probs,list):
+            if len(act_functions)< len(layers):
+                raise ValueError(f'Length of act_functions parameter shall match the length of layers.')
+
 
         # Set model using the modules parameter
-        self.model = network
+        self.model = nn.ModuleList()
+        input_neurons = self.input_size
+        for l, hidden_neurons in enumerate(self.layers):
+            # On layer l, which contains n_neurons, perform the following 
+            # operations:
+            # 1. Apply Linear neural network model regression (fully connected 
+            # network -> z = Sum(wi*xi+bi))
+            b = bias[l] if isinstance(bias, list) else bias
+            self.model.append(nn.Linear(input_neurons, hidden_neurons, bias = b))
+            
+            # 2. Apply ReLU activation function (al(z))
+            af = act_functions[l] if isinstance(act_functions, list) else act_functions
+            if af is not None: self.model.append(af)
+            
+            # 3. Normalize data using the n_neurons
+            self.model.append(nn.BatchNorm1d(hidden_neurons))
+            
+            # 4. Cancel out a random proportion p of the neurons to avoid 
+            # overfitting
+            p = dropout_probs[l] if isinstance(dropout_probs, list) else dropout_probs
+            if p is not None:
+                self.model.append(nn.Dropout(p))
+            
+            # 5. Set new number of input features n_in for the next layer l+1.
+            input_neurons = hidden_neurons
+
+        # Set the last layer of the list which corresponds to the final output
+        self.model.append(nn.Linear(self.layers[-1], self.output_size))
 
         # Initialize dictionary to store training results
         self._learn_results = {'total_iterations':[],
@@ -1013,7 +1167,6 @@ class CollisionRiskProbabilityEstimator(nn.Module):
                                'epoch':[],
                                'learning_rate':[],
                                'batch_size':[]}
-
                                
     def plot_loss(self, filepath:str = None, figsize:tuple = (6, 3), 
                   log_scale:bool = False, validation_only:bool=False, 

@@ -333,7 +333,6 @@ def bws_msecv(data: np.ndarray, kernel:str='gaussian', bins_rule:str='fd',
     return best_bw, r2_score
 
 #%% FUNCTION: import_stdists_ranking
-
 def import_stdists_ranking(df_input:pd.DataFrame, filepath:str, 
                            scipy_distributions:list = None) -> tuple:
     """Import satistical fitting results per feature in a DataFrame.
@@ -430,8 +429,7 @@ def import_stdists_ranking(df_input:pd.DataFrame, filepath:str,
     
     return ranking, best_dists
 
-#%%
-
+#%% CLASS: SyntheticDataGenerator
 class SyntheticDataGenerator():
     def __init__(self, data:np.ndarray, r2_threhold:float = 0.95, 
                  kernel:str = 'gaussian', underfitting_factor:float=3.0,
