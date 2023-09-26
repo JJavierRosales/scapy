@@ -93,7 +93,7 @@ networks.update({'lstm_pc':
                                 })
                 })
 #%% LSTM layer with Forget Bias 1 cell architecture
-h_sz = 263
+h_sz = 264
 networks.update({'lstm_fb1':
                  nn.ModuleDict({'lstm': layers.LSTM(input_size = input_size,
                                          batch_first = True, 
@@ -161,7 +161,7 @@ networks.update({'gru_vanilla':
                 })
 
 #%% GRU layer with SLIMx (x = 1, 2 & 3) cell architecture
-h_szs = [354, 354, 897]
+h_szs = [354, 354, 898]
 for v in [1, 2, 3]:
     networks.update({f'gru_slim{v}':
                      nn.ModuleDict({'gru': layers.GU(input_size = input_size, 

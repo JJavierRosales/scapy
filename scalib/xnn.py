@@ -22,7 +22,53 @@ from .event import ConjunctionEvent as CE
 from .event import ConjunctionEventsDataset as CED
 from .cdm import ConjunctionDataMessage as CDM
 
+def MAPELoss(output:torch.Tensor, target:torch.Tensor, 
+                epsilon:float=1e-8) -> torch.Tensor:
+    """Mean Absolute Percentage Error (MAPE)
 
+    Args:
+        output (torch.Tensor): Predicted values.
+        target (torch.Tensor): True values.
+        epsilon (float, optional): Infinitesimal delta to skip 
+        singularities caused by target=0. Defaults to 1e-8.
+
+    Returns:
+        torch.Tensor: _description_
+    """
+    
+    return float(torch.mean(torch.abs((target - output) / \
+                                torch.add(target, epsilon))*100))
+
+def POCID(output:torch.Tensor, target:torch.Tensor) -> float:
+    """Prediction Of Change In Direction (POCID)
+
+    Args:
+        output (torch.Tensor): Predicted value.
+        target (torch.Tensor): True value.
+
+    Returns:
+        float: Percentage of predictions whose direction matches those of the 
+        true values.
+    """
+
+    curr_output, prev_output = output[:, 1:], output[:, :-1]
+    curr_target, prev_target = target[:, 1:], target[:, :-1]
+
+    d = 0
+    for i, cout in enumerate(curr_output):
+        pout = prev_output[i]
+        ctar, ptar = curr_target[i], prev_target[i]
+
+        # Get boolean tensor
+        pocid = (cout-pout)*(ctar-ptar)>0
+
+        # Count number of conditions matching True
+        d += int(torch.sum(pocid))
+
+    return float(d/torch.numel(curr_output)*100)
+
+
+#%% CLASS: Dataset
 class Dataset(TensorDataset):
   def __init__(self, X, y):
     self.inputs = X
@@ -54,6 +100,7 @@ class Dataset(TensorDataset):
                    f'| Entries: {len(self.inputs)})'
      return description
 
+#%% CLASS: TensorDatasetFromDataFrame
 class TensorDatasetFromDataFrame():
     def __init__(self, df:pd.DataFrame, output_features:list, input_features:list, 
                  normalize_inputs:bool=True):
@@ -736,10 +783,7 @@ class ConjunctionEventForecaster(nn.Module):
             np.ndarray: NumPy array containing the MSE loss values per batch.
         """
 
-        def MAPELoss(output:torch.Tensor, target:torch.Tensor, 
-                     epsilon:float=1e-8):
 
-            return torch.mean(torch.abs((target - output) / (target+epsilon)))
 
         # Get test dataset with normalized features using the stats metrics. 
         test_set = DatasetEventDataset(event_set = events_test, 
@@ -777,13 +821,15 @@ class ConjunctionEventForecaster(nn.Module):
         mse_criterion = nn.MSELoss(reduction='mean')
         sse_criterion = nn.MSELoss(reduction='sum')
         mape_criterion = MAPELoss
+        pocid_criterion = POCID
 
         # Initialize dictionary with the different regression metrics.
         results = {'sse':np.zeros((len(test_loader))),
                    'mse':np.zeros((len(test_loader))),
                    'mae':np.zeros((len(test_loader))),
                    'mape':np.zeros((len(test_loader))),
-                   'bic':np.zeros((len(test_loader)))}
+                   'bic':np.zeros((len(test_loader))),
+                   'pocid': np.zeros((len(test_loader)))}
 
         # Iterate over all items in the test_loader
         with torch.no_grad():
@@ -826,6 +872,7 @@ class ConjunctionEventForecaster(nn.Module):
                 results['mae'][t] = float(mae_criterion(output, target))
                 results['mape'][t] = float(mape_criterion(output, target))
                 results['bic'][t] = t_sz*np.log(results['mse'][t])+k*np.log(t_sz)
+                results['pocid'][t] = pocid_criterion(output, target)
 
         return results
 
@@ -1539,13 +1586,15 @@ class CollisionRiskProbabilityEstimator(nn.Module):
         mse_criterion = nn.MSELoss(reduction='mean')
         sse_criterion = nn.MSELoss(reduction='sum')
         mape_criterion = MAPELoss
+        pocid_criterion = POCID
 
         # Initialize dictionary with the different regression metrics.
         results = {'sse':np.zeros((len(test_loader))),
                    'mse':np.zeros((len(test_loader))),
                    'mae':np.zeros((len(test_loader))),
                    'mape':np.zeros((len(test_loader))),
-                   'bic':np.zeros((len(test_loader)))}
+                   'bic':np.zeros((len(test_loader))),
+                   'pocid': np.zeros((len(test_loader)))}
 
         # Iterate over all items in the test_loader
         with torch.no_grad():
@@ -1570,6 +1619,7 @@ class CollisionRiskProbabilityEstimator(nn.Module):
                 results['mae'][t] = float(mae_criterion(outputs, targets))
                 results['mape'][t] = float(mape_criterion(outputs, targets))
                 results['bic'][t] = t_sz*np.log(results['mse'][t])+k*np.log(t_sz)
+                results['pocid'][t] = pocid_criterion(outputs, targets)
 
         return results
 
