@@ -22,6 +22,7 @@ from .event import ConjunctionEvent as CE
 from .event import ConjunctionEventsDataset as CED
 from .cdm import ConjunctionDataMessage as CDM
 
+#%% FUNCTION: MAPELoss
 def MAPELoss(output:torch.Tensor, target:torch.Tensor, 
                 epsilon:float=1e-8) -> torch.Tensor:
     """Mean Absolute Percentage Error (MAPE)
@@ -38,7 +39,7 @@ def MAPELoss(output:torch.Tensor, target:torch.Tensor,
     
     return float(torch.mean(torch.abs((target - output) / \
                                 torch.add(target, epsilon))*100))
-
+#%% FUNCTION: POCID
 def POCID(output:torch.Tensor, target:torch.Tensor) -> float:
     """Prediction Of Change In Direction (POCID)
 
@@ -1158,7 +1159,9 @@ class CollisionRiskProbabilityEstimator(nn.Module):
 
     def __init__(self, input_size:int, output_size:int, layers:list, 
                  bias:Union[bool, list] = True, act_functions = nn.ReLU(), 
-                 dropout_probs:Union[float, list] = 0.2):
+                 dropout_probs:Union[float, list] = 0.2, 
+                 classification:bool=False, 
+                 class_weights:torch.Tensor=torch.tensor([0.5, 0.5])):
         
         # Inherit attributes from nn.Module class
         super().__init__()
@@ -1167,6 +1170,8 @@ class CollisionRiskProbabilityEstimator(nn.Module):
         self.input_size = input_size
         self.output_size = output_size
         self.layers = layers
+        self.classification = classification
+        self._class_weights = class_weights
 
         if isinstance(act_functions,list):
             if len(act_functions)< len(layers):
@@ -1293,7 +1298,8 @@ class CollisionRiskProbabilityEstimator(nn.Module):
     def learn(self, data:TensorDataset, epochs:int = 10, lr:float = 1e-3, 
               batch_size:int = 8, device:str = None, 
               valid_proportion:float = 0.15, filepath:str = None,
-              epoch_step_checkpoint:int = None, **kwargs) -> None:
+              epoch_step_checkpoint:int = None, 
+              **kwargs) -> None:
         """Train ANN model.
 
         Args:
@@ -1360,7 +1366,11 @@ class CollisionRiskProbabilityEstimator(nn.Module):
 
         # Set-up optimizer and criterion.
         self.optimizer = optim.Adam(self.parameters(), lr = lr)
-        self.criterion = nn.MSELoss()
+
+        if self.classification:
+            self.criterion = nn.CrossEntropyLoss(weight = self._class_weights)
+        else:
+            self.criterion = nn.MSELoss()
 
 
         # Check if the same model already exists. If it does, load model 
@@ -1507,6 +1517,8 @@ class CollisionRiskProbabilityEstimator(nn.Module):
         """
         if only_parameters:
             torch.save({
+                'classification': self.classification,
+                'class_weights':self._class_weights,
                 'num_params': sum(p.numel() for p in self.parameters()),
                 'epochs': self._learn_results['epoch'][-1],
                 'model': self.state_dict() if only_parameters else self,
@@ -1536,6 +1548,12 @@ class CollisionRiskProbabilityEstimator(nn.Module):
             self.optimizer.load_state_dict(torch_file['optimizer'])
             self._loss = torch_file['loss']
             self._learn_results = torch_file['learn_results']
+            if 'classification' in torch_file.keys():
+                self.classification = torch_file['classification']
+                self._class_weights = torch_file['class_weights']
+            else:
+                self.classification = False
+                self._class_weights = torch.Tensor([0.5, 0.5])
         else:
             self = torch.load(filepath)
 
