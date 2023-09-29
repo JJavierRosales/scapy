@@ -1,4 +1,4 @@
-# ***SCALIB*** (Spacecraft Conjunction Assessment Library) 
+# ***Scapy*** (Spacecraft Conjunction Assessment for Python) 
 A Python library developed as part of the individual research project ***Spacecraft Conjunction Assessment optimization using Artificial Neural Networks on Conjunction Data Messages (CDMs)*** for the Master Science in Astronautics and Space Engineering (*Cranfield University*).
 
 ## Research statement
@@ -13,7 +13,7 @@ Consequently, the successful implementation of spacecraft collision avoidance pr
 
 ## License
 
-SCALIB is distributed under the GNU General Public License version 3.
+**Scapy** is distributed under the GNU General Public License version 3.
 
 ## Repository content description
  This repository contains all the relevant tools and/or scripts for the project.
