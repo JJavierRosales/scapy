@@ -1,4 +1,9 @@
-# ***Scapy*** (Spacecraft Conjunction Assessment for Python) 
+<div align="left">
+  <a> <img height="120px" src="docs/scapy-logo.png"></a>
+</div>
+
+# ***ScaPy*** 
+## Spacecraft Conjunction Assessment for Python 
 A Python library developed as part of the individual research project ***Spacecraft Conjunction Assessment optimization using Artificial Neural Networks on Conjunction Data Messages (CDMs)*** for the Master Science in Astronautics and Space Engineering (*Cranfield University*).
 
 ## Research statement
