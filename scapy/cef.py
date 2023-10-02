@@ -111,8 +111,21 @@ class CosineWarmupScheduler(optim.lr_scheduler._LRScheduler):
 #%% CLASS: ConjunctionEventForecaster
 # Define Feature Forecaster module
 class ConjunctionEventForecaster(nn.Module):
+    """Model instanciator for Conjunction Event forecasting.
+
+    Args:
+        nn (class): Base class for all neural networks in Pytorch.
+    """
 
     def __init__(self, network:list, features:Union[list, str] = None) -> None:
+        """Initialises the model instanciator.
+
+        Args:
+            network (list): List of objects composing the RNN network.
+            features (Union[list, str], optional): List of feature names to be
+            trained on. Defaults to compulsory CDM features as per defined in
+            the CCSDS Recommended standards.
+        """
         super(ConjunctionEventForecaster, self).__init__()
         if features is None:
             features = ['__CREATION_DATE',
@@ -200,24 +213,29 @@ class ConjunctionEventForecaster(nn.Module):
                   log_scale:bool = False, validation_only:bool=False, 
                   plot_lr:bool=False, label:str = None,
                   ax:plt.Axes = None, return_ax:bool = False) -> None:
-        """Plot RNN loss in the training set (orange) and validation set (blue) 
-        vs number of iterations during model training.
+        
+        """Plot loss in the training set (orange) and validation set (blue) 
+        versus the number of iterations during model training.
 
         Args:
             filepath (str, optional): Path where the plot is saved. Defaults to 
             None.
             figsize (tuple, optional): Size of the plot. Defaults to (6 ,3).
-            log_scale (bool, optional): Flag to plot Loss using logarithmic 
-            scale. Defaults to False.
-            plot_lr (bool, optional): Include learning rate evolution during
-            training. Defaults to False.
+            log_scale (bool, optional): Use logarithmic scale. Defaults to 
+            False.
+            validation_only (bool, optional): Plot validation loss only. 
+            Defaults to False.
+            plot_lr (bool, optional): Plot learning rate. Defaults to False.
+            label (str, optional): Label of feature plotted. Defaults to None.
+            ax (plt.Axes, optional): Axis object. Defaults to None.
+            return_ax (bool, optional): Return axis object. Defaults to False.
+
         """
 
         # Apply logarithmic transformation if log_scale is set to True. This 
         # helps to see the evolution when variations between iterations are 
         # small.
         iterations = self._learn_results['total_iterations']
-
         
         # Create axes instance if not passed as a parameter.
         if ax is None: fig, ax = plt.subplots(figsize=figsize)
@@ -273,7 +291,7 @@ class ConjunctionEventForecaster(nn.Module):
             return ax
 
     def learn(self, event_set:list, epochs:int = 2, lr:float = 1e-3, 
-              batch_size:int = 8, device:str = None, 
+              batch_size:int = 8, device:torch.device = torch.device('cpu'), 
               valid_proportion:float = 0.15, num_workers:int = 4, 
               event_samples_for_stats:int = 250, filepath:str = None,
               epoch_step_checkpoint:int = None, **kwargs) -> None:
@@ -286,16 +304,17 @@ class ConjunctionEventForecaster(nn.Module):
             to 2.
             lr (float, optional): Learning rate. Defaults to 1e-3.
             batch_size (int, optional): Batch size. Defaults to 8.
-            device (str, optional): Device where torchs are allocated. Defaults 
-            to 'cpu'.
-            valid_proportion (float, optional): Proportion of all data used for 
+            device (torch.device, optional): Device where tensors are allocated. 
+            Defaults to 'cpu'.
+            valid_proportion (float, optional): Proportion of data used for 
             validation (value must be between 0 and 1). Defaults to 0.15.
-            num_workers (int, optional): _description_. Defaults to 4.
+            num_workers (int, optional): Parallel processes for data loading. 
+            Defaults to 4.
             event_samples_for_stats (int, optional): Number of events considered 
-            to compute the mean and standard deviation used for normalization. 
+            to compute the mean and standard deviation used for normalisation. 
             Defaults to 250.
-            filepath (str, optional): Filepath for the model 
-            to be saved. If None, model is not saved. Defaults to None.
+            filepath (str, optional): Filepath where the model parameters shall
+            be saved. If None, parameters are not saved. Defaults to None.
             epoch_step_checkpoint (int, optional): Number of epochs to process 
             before saving a new checkpoint. Only applicable if filepath is
             not None. Defaults to None.
@@ -307,7 +326,6 @@ class ConjunctionEventForecaster(nn.Module):
         """
 
 
-        
         # Define the device on which the torch will be allocated:
         device = torch.device('cpu') if device is None else torch.device(device)
 
@@ -586,20 +604,21 @@ class ConjunctionEventForecaster(nn.Module):
             self = torch.load(filepath)
     
     def test(self, events_test:CED, test_batch_size:int, 
-             num_workers:int = 4) -> np.ndarray:
-        """Compute MSE loss on a test set using the trained model.
+             num_workers:int = 4) -> dict:
+        """Compute loss on a test set of events using the trained model.
 
         Args:
-            events_test (CED): Conjunction Events Dataset.
+            events_test (ConjunctionEventsDataset): Conjunction Events Dataset
+            object.
             test_batch_size (int): Batch size.
-            num_workers (int, optional): Number of workers for the DataLoader
-            class. Defaults to 4.
+            num_workers (int, optional): Parallel processes for data loading. 
+            Defaults to 4.
 
         Returns:
-            np.ndarray: NumPy array containing the MSE loss values per batch.
+            dict: Dictionary containing the test results for the performance
+            metrics in the format key:results. Every performance metric (key) 
+            contains an array of size equal to test_batch_size with the results.
         """
-
-
 
         # Get test dataset with normalized features using the stats metrics. 
         test_set = DatasetEventDataset(event_set = events_test, 
@@ -697,10 +716,10 @@ class ConjunctionEventForecaster(nn.Module):
             object(s).
 
         Raises:
-            RuntimeError: _description_
+            RuntimeError: Invalid output from the model.
 
         Returns:
-            ConjunctionDataMessage: CDM object.
+            ConjunctionDataMessage: Conjunction Data Message object.
         """
 
         ds = DatasetEventDataset(CED(events=[event]), 
@@ -808,7 +827,7 @@ class ConjunctionEventForecaster(nn.Module):
     def predict_event(self, event:CE, num_samples:int = 1, 
         max_length:int = None) -> Union[CE, CED]:
         """Forecast the evolution of a given Conjunction Event by predicting 
-        upcoming CDMs until TCA.
+        upcoming Conjunction Data Messages until Time of Closest Approach.
 
         Args:
             event (ConjunctionEvent): Conjunction Event to forecast.
@@ -879,9 +898,12 @@ class ConjunctionEventForecaster(nn.Module):
             else CED(events = events)
 
     def reset(self, batch_size:int):
-        """Initialize hidden state (h) and cell state (c) for all the LSTM 
-        layers in the Sequencial object.
+        """Reset hidden state (h) and cell state (c) for all the RNN layers.
+
+        Args:
+            batch_size (int): Batch size.
         """
+
         # Initialize dictionary for hidden states tuple
         self.hidden = {}
 
@@ -913,10 +935,11 @@ class ConjunctionEventForecaster(nn.Module):
             processing.
             x_lengths (torch.IntTensor): Tensor with shape (n_events, 1) 
             containing the number of CDMs contained in every event. This tensor 
-            is used to unpack padded torch.
+            is used to unpack padded tensor.
 
         Returns:
-            torch.Tensor: Tensor containing normalized values of the new CDM.
+            torch.Tensor: Tensor with shape (n_events, max_event_length, 
+            features) containing normalised values of the new CDM.
         """
 
         # Iterate over all modules to perform the forward operation.
@@ -959,8 +982,6 @@ class ConjunctionEventForecaster(nn.Module):
 
         return x
     
-    def __hash__(self):
-        return hash(self.model)
 
 #%% Initialise model object as a shortcut
 model = ConjunctionEventForecaster

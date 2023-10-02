@@ -19,12 +19,46 @@ from . import utils
 
 #%% CLASS: CollisionRiskEvaluator
 class CollisionRiskEvaluator(nn.Module):
+    """Model instanciator for Conjunction Event forecasting.
+
+    Args:
+        nn (class): Base class for all neural networks in Pytorch.
+    """
 
     def __init__(self, input_size:int, output_size:int, layers:list, 
-                 bias:Union[bool, list] = True, act_functions = nn.ReLU(), 
+                 bias:Union[bool, list] = True, 
+                 act_functions:torch.nn = nn.ReLU(), 
                  dropout_probs:Union[float, list] = 0.2, 
                  classification:bool=False, 
-                 class_weights:torch.Tensor=torch.tensor([0.5, 0.5])):
+                 class_weights:torch.Tensor = torch.tensor([0.5, 0.5])):
+        """Initialises the model instanciator.
+
+        Args:
+            input_size (int): Number of input features.
+            output_size (int): Number of output features.
+            layers (list): List of neurons per hidden layer.
+            bias (Union[bool, list], optional): Include bias in hidden layer(s).
+            If a list is passed, it needs to have the same length as layers 
+            parameter. Defaults to True.
+            act_functions (torch.nn, optional): Activation function per hidden 
+            layer. If a list is passed, it needs to have the same length as 
+            layers parameter. Defaults to nn.ReLU().
+            dropout_probs (Union[float, list], optional): Probability dropout. 
+            If a list is passed, it needs to have the same length as layers 
+            parameter. Defaults to 0.2.
+            classification (bool, optional): Classification mode: True for risk 
+            classification, False for probability risk regression. Defaults to 
+            False.
+            class_weights (torch.Tensor, optional): Classification weights to 
+            compensate skewness of dataset no risk events vs risk. Defaults to 
+            torch.tensor([0.5, 0.5]) (equal relevance).
+
+        Raises:
+            ValueError: act_functions passed as a list but does not contain the 
+            same number of items as layers parameters.
+            ValueError: dropout_probs passed as a list but does not contain the 
+            same number of items as layers parameters.
+        """
         
         # Inherit attributes from nn.Module class
         super().__init__()
@@ -93,17 +127,22 @@ class CollisionRiskEvaluator(nn.Module):
                   log_scale:bool = False, validation_only:bool=False, 
                   plot_lr:bool=False, label:str = None,
                   ax:plt.Axes = None, return_ax:bool = False) -> None:
-        """Plot ANN loss in the training set (orange) and validation set (blue) 
-        vs number of iterations during model training.
+        """Plot loss in the training set (orange) and validation set (blue) 
+        versus the number of iterations during model training.
 
         Args:
             filepath (str, optional): Path where the plot is saved. Defaults to 
             None.
             figsize (tuple, optional): Size of the plot. Defaults to (6 ,3).
-            log_scale (bool, optional): Flag to plot Loss using logarithmic 
-            scale. Defaults to False.
-            plot_lr (bool, optional): Include learning rate evolution during
-            training. Defaults to False.
+            log_scale (bool, optional): Use logarithmic scale. Defaults to 
+            False.
+            validation_only (bool, optional): Plot validation loss only. 
+            Defaults to False.
+            plot_lr (bool, optional): Plot learning rate. Defaults to False.
+            label (str, optional): Label of feature plotted. Defaults to None.
+            ax (plt.Axes, optional): Axis object. Defaults to None.
+            return_ax (bool, optional): Return axis object. Defaults to False.
+
         """
 
         # Apply logarithmic transformation if log_scale is set to True. This 
@@ -168,25 +207,25 @@ class CollisionRiskEvaluator(nn.Module):
             return ax
 
     def learn(self, data:TensorDataset, epochs:int = 10, lr:float = 1e-3, 
-              batch_size:int = 8, device:str = None, 
+              batch_size:int = 8, device:torch.device = torch.device('cpu'), 
               valid_proportion:float = 0.15, filepath:str = None,
               epoch_step_checkpoint:int = None, 
               **kwargs) -> None:
         """Train ANN model.
 
         Args:
-            data (TensorDataset): List of Conjunction Event objects to use for 
-            training (including validationd data).
+            data (TensorDataset): Dataset of tensors with inputs and targets 
+            (including the validation dataset).
             epochs (int, optional): Number of epochs used for training. Defaults 
             to 10.
             lr (float, optional): Learning rate. Defaults to 1e-3.
             batch_size (int, optional): Batch size. Defaults to 8.
-            device (str, optional): Device where torchs are allocated. Defaults 
-            to 'cpu'.
-            valid_proportion (float, optional): Proportion of all data used for 
+            device (torch.device, optional): Device where tensors are allocated. 
+            Defaults to 'cpu'.
+            valid_proportion (float, optional): Proportion of data used for 
             validation (value must be between 0 and 1). Defaults to 0.15.
-            filepath (str, optional): Filepath for the model 
-            to be saved. If None, model is not saved. Defaults to None.
+            filepath (str, optional): Filepath where the model parameters shall
+            be saved. If None, parameters are not saved. Defaults to None.
             epoch_step_checkpoint (int, optional): Number of epochs to process 
             before saving a new checkpoint. Only applicable if filepath is
             not None. Defaults to None.
@@ -429,14 +468,17 @@ class CollisionRiskEvaluator(nn.Module):
             self = torch.load(filepath)
 
     def test(self, data_test:TensorDataset, test_batch_size:int) -> np.ndarray:
-        """Compute MSE loss on a test set using the trained model.
+        """Compute loss on a test set of events using the trained model.
 
         Args:
-            data_test (TensorDataset): Conjunction Data Messages dataset.
+            data_test (TensorDataset): Tensor dataset for testing with inputs 
+            and targets.
             test_batch_size (int): Batch size.
 
         Returns:
-            np.ndarray: NumPy array containing the MSE loss values per batch.
+            dict: Dictionary containing the test results for the performance
+            metrics in the format key:results. Every performance metric (key) 
+            contains an array of size equal to test_batch_size with the results.
         """
 
         
@@ -526,7 +568,18 @@ class CollisionRiskEvaluator(nn.Module):
 
         return results
 
-    def forward(self, x):
+    def forward(self, x:torch.Tensor) -> torch.Tensor:
+        """Produce risk evaluation: conunction classification or collision risk 
+        probability estimation.
+
+        Args:
+            x (torch.FloatTensor): Tensor with shape (batch_size, features) 
+            containing the input values for ANN processing.
+
+        Returns:
+            torch.Tensor: Tensor with shape (batch_size, features) containing 
+            the predicted risk classification or risk probability.
+        """
 
         # Iterate over all modules to perform the forward operation.
         for layer in self.model:
