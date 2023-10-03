@@ -13,7 +13,17 @@ from . import ccsds
 
 #%% CLASS: ConjunctionDataMessage 
 class ConjunctionDataMessage():
+    """Conjunction Data Message object instanciator.
+    """
     def __init__(self, filepath:str = None, set_defaults:bool = True):
+        """Initialise object instanciator
+
+        Args:
+            filepath (str, optional): File path where the CDM information is 
+            stored. Defaults to None.
+            set_defaults (bool, optional): Set CREATION_DATE to current datetime 
+            and CCSDS_CDM_VERSION to 1.0 if True. Defaults to True.
+        """
         # Header
         # Relative metadata
         # Object 1
@@ -257,7 +267,18 @@ class ConjunctionDataMessage():
         return False
 
     
-    def set_header(self, key, value):
+    def set_header(self, key:str, value:str) -> None:
+        """Set header information.
+
+        Args:
+            key (str): Feature to set.
+            value (str): Value of the feature.
+
+        Raises:
+            RuntimeError: Format of datetime features is not recognised.
+            ValueError: Feature is not recognised.
+        """
+
         if key in self._keys_header:
             if key in self._keys_with_dates:
                 # We have a field with a date string as the value. Check if the 
@@ -275,13 +296,33 @@ class ConjunctionDataMessage():
         else:
             raise ValueError('Invalid key ({}) for header'.format(key))
 
-    def set_relative_metadata(self, key, value):
+    def set_relative_metadata(self, key:str, value:str) -> None:
+        """Set relative metadata information.
+
+        Args:
+            key (str): Feature to set.
+            value (str): Value of the feature.
+
+        Raises:
+            ValueError: Feature is not recognised.
+        """
         if key in self._keys_relative_metadata:
             self._values_relative_metadata[key] = value
         else:
             raise ValueError('Invalid key ({}) for relative metadata'.format(key))
 
-    def set_object(self, object_id, key, value):
+    def set_object(self, object_id:int, key:str, value:str) -> None:
+        """Set object specific data
+
+        Args:
+            object_id (int): ID of object (1 or 2).
+            key (str): Feature to set.
+            value (str): Value of the feature.
+
+        Raises:
+            ValueError: Object ID not recognised.
+            ValueError: Feature is not recognised.
+        """
         if object_id != 0 and object_id != 1:
             raise ValueError('Expecting object_id to be 0 or 1')
         if key in self._keys_metadata:
@@ -295,7 +336,17 @@ class ConjunctionDataMessage():
         else:
             raise ValueError('Invalid key ({}) for object data'.format(key))
 
-    def get_object(self, object_id, key):
+    def get_object(self, object_id:int, key:str) -> None:
+        """Get object specific data.
+
+        Args:
+            object_id (int): ID of object (1 or 2).
+            key (str): Feature of the CDM to retrieve.
+
+        Raises:
+            ValueError: Object ID not recognised.
+            ValueError: Feature is not recognised.
+        """
         if object_id != 0 and object_id != 1:
             raise ValueError('Expecting object_id to be 0 or 1')
         if key in self._keys_metadata:
@@ -309,23 +360,39 @@ class ConjunctionDataMessage():
         else:
             raise ValueError('Invalid key ({}) for object data'.format(key))
 
-    def get_relative_metadata(self, key):
+    def get_relative_metadata(self, key:str) -> None:
+        """Get relative metadata data.
+
+        Args:
+            key (str): Feature of the CDM to retrieve.
+
+        Raises:
+            ValueError: Feature is not recognised.
+        """
         if key in self._keys_relative_metadata:
             return self._values_relative_metadata[key]
         else:
             raise ValueError('Invalid key ({}) for relative metadata'.format(key))
 
-    def set_state(self, object_id, state):
+    def set_state(self, object_id:int, state:np.ndarray) -> None:
+        """Set state vector components of an object.
+
+        Args:
+            object_id (int): ID of the object (1 or 2).
+            state (np.ndarray): Array with shape (position, velocity).
+        """
 
         # Iterate over states and components
-        for s, state in enumerate(['', '_DOT']):
-            for c, component in enumerate(['X', 'Y', 'Z']):
-                self.set_object(object_id, component + state, state[s, c])
+        for s, s_label in enumerate(['', '_DOT']):
+            for c, c_label in enumerate(['X', 'Y', 'Z']):
+                self.set_object(object_id, c_label + s_label, state[s, c])
 
         self._update_state_relative()
         self._update_miss_distance()
 
-    def _update_miss_distance(self):
+    def _update_miss_distance(self) -> None:
+        """Update miss distance when the state vector of an object is updated.
+        """
         state_object1 = self.get_state(0)
         if np.isnan(state_object1.sum()):
             warnings.warn('state_object1 has NaN')
@@ -336,7 +403,9 @@ class ConjunctionDataMessage():
         miss_distance = np.linalg.norm(state_object1[0] - state_object2[0])
         self.set_relative_metadata('MISS_DISTANCE', miss_distance)
 
-    def _update_state_relative(self):
+    def _update_state_relative(self) -> None:
+        """Update relative state vector when an object state vector is updated.
+        """
         def uvw_matrix(r:np.ndarray, v:np.ndarray) -> np.ndarray:
             """Get reference frame from position and velocity vectors.
 
@@ -345,7 +414,7 @@ class ConjunctionDataMessage():
                 v (np.ndarray): Velocity vector (tangent to orbit).
 
             Returns:
-                np.ndarray: _description_
+                np.ndarray: Reference frame with units vectors.
             """
             u = r / np.linalg.norm(r)
             w = np.cross(r, v)
@@ -427,7 +496,7 @@ class ConjunctionDataMessage():
         """Get state vector for a specific object.
 
         Args:
-            object_id (int): Object ID to which the state vector belongs to.
+            object_id (int): ID of the object (1 or 2).
 
         Returns:
             np.ndarray: State vector.
@@ -446,7 +515,7 @@ class ConjunctionDataMessage():
         """Get covariance matrix
 
         Args:
-            object_id (int): Object ID to which the covarianve matrix belongs to
+            object_id (int): ID of the object (1 or 2).
 
         Returns:
             np.ndarray: Covariance matrix.
@@ -475,7 +544,7 @@ class ConjunctionDataMessage():
         """Set the covariance matrix values in the CDM object.
 
         Args:
-            object_id (int): Object ID the covariance matrix belongs to.
+            object_id (int): ID of the object (1 or 2).
             covariance (np.ndarray): Covariance matrix to assign to the CDM
             object.
         """
@@ -493,6 +562,14 @@ class ConjunctionDataMessage():
                                 covariance[i, j])
     @staticmethod
     def datetime_to_str(input_datetime:dt) -> str:
+        """Convert datetime to string.
+
+        Args:
+            input_datetime (dt): Datetime.
+
+        Returns:
+            str: Datetime as string.
+        """
         return input_datetime.strftime('%Y-%m-%dT%H:%M:%S.%f')
 
     def validate(self) -> None:
@@ -531,11 +608,11 @@ class ConjunctionDataMessage():
         """Convert CDM object to string in KVN format.
 
         Args:
-            show_all (bool, optional): Flag to determine if KVN entries with 
-            empty values are included. Defaults to False.
+            show_all (bool, optional): Include null KVN entries. Defaults to 
+            False.
 
         Returns:
-            str: CDM in KVN format.
+            str: CDM in KVN format (string).
         """
 
         # Define internal function to concatenate KVN entries.
@@ -597,12 +674,31 @@ class ConjunctionDataMessage():
         return content
 
     def __repr__(self):
+        """Print object in format KVN (string).
+        """
         return self.kvn()
 
-    def __getitem__(self, key):
+    def __getitem__(self, key:str) -> str:
+        """Get data from a given feature of the CDM
+
+        Args:
+            key (str): Feature to retrieve.
+
+        Returns:
+            str: Data contained in the feature.
+        """
         return self.to_dict()[key]
 
-    def __setitem__(self, key, value):
+    def __setitem__(self, key:str, value:str) -> None:
+        """Set data for a given feature of a CDM.
+
+        Args:
+            key (str): Feature to update.
+            value (str): Value of the feature.
+
+        Raises:
+            ValueError: Feature not recognised.
+        """
         if key in self._keys_header:
             self.set_header(key, value)
         elif key in self._keys_relative_metadata:
