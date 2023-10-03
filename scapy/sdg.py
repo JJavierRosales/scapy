@@ -21,18 +21,22 @@ class SyntheticDataGenerator():
     def __init__(self, data:np.ndarray, r2_threhold:float = 0.95, 
                  kernel:str = 'gaussian', underfitting_factor:float=3.0,
                  filepath:str = None):
-        """Initializes SyntheticDataGenerator class.
+        """Initialises generator instanciator.
 
         Args:
             data (np.ndarray): Array of numerical values to approach.
-            r2_threhold (float, optional): _description_. Defaults to 0.95.
-            kernel (str, optional): _description_. Defaults to 'gaussian'.
-            underfitting_factor (float, optional): _description_. Defaults to 
-            3.0.
+            r2_threhold (float, optional): Coefficient of determination 
+            threshold (above which it is considered a valid approximation). 
+            Defaults to 0.95.
+            kernel (str, optional): Kernel to use: 'gaussian', 'tophat', 
+            'epanechnikov', 'exponential', 'linear', 'cosine'. Defaults to 
+            'gaussian'.
+            underfitting_factor (float, optional): Factor to reduce overfitting 
+            (multiplies the optimal bandwidth computed through MSE cross 
+            validation). Defaults to 3.0.
             filepath (str, optional): Path of the file with the fitted 
             parameters. Defaults to None.
         """
-
 
         # Initialize attributes
         self.data = data.flatten()
@@ -44,9 +48,6 @@ class SyntheticDataGenerator():
                 raise ValueError(f'Parent folder {folderpath} does not exist.')
             else:
                 self.filepath = filepath
-
-
-
 
         if filepath is None or \
             (os.path.exists(folderpath) and not os.path.exists(filepath)):
@@ -131,6 +132,11 @@ class SyntheticDataGenerator():
 
 
     def save(self, filepath:str):
+        """Save generator parameters into an external pickle file.
+
+        Args:
+            filepath (str): File path where the parameters are saved.
+        """
 
         if not filepath.endswith('.pkl'):
             filepath = filepath + '.pkl'
@@ -149,7 +155,12 @@ class SyntheticDataGenerator():
         
 
 
-    def load(self, filepath:str):
+    def load(self, filepath:str) -> None:
+        """Load generator parameters.
+
+        Args:
+            filepath (str): Origin file path.
+        """
 
         with open(filepath, 'rb') as f:
             loaded_dict = pickle.load(f)
@@ -166,7 +177,10 @@ class SyntheticDataGenerator():
             self.kernel = loaded_dict['kde']['kernel']
         
 
-    def set_kde(self):
+    def set_kde(self) -> None:
+        """Setter method to get Probability Density Estimator through Kernel
+        Density estimation method.
+        """
 
         print(f'\nEstimating optimal bandwidth for {self.kernel.capitalize()} '
               f'Kernel Density...', end='\r')
@@ -197,7 +211,16 @@ class SyntheticDataGenerator():
         if hasattr(self, 'filepath'): self.save(filepath=self.filepath)
 
         
-    def generate_data(self, n_samples:int = 1000, random_state:int = None):
+    def generate_data(self, n_samples:int = 1000, random_state:int = None) \
+        -> None:
+        """Generate synthetic data.
+
+        Args:
+            n_samples (int, optional): Number of data points to create. Defaults 
+            to 1000.
+            random_state (int, optional): Random state to ensure 
+            reproducibility. Defaults to None.
+        """
 
         # Check which method is used to produce synthetic data: SciPy 
         # distribution or Kernel Density Estimator.
@@ -233,7 +256,13 @@ class SyntheticDataGenerator():
         self.synthetic_data = synthetic_data.flatten()
 
 
-    def probability_density(self, n_samples_pd:int = 1000):
+    def probability_density(self, n_samples_pd:int = 1000) -> None:
+        """Compute probability density points.
+
+        Args:
+            n_samples_pd (int, optional): Number of points to compute. Defaults 
+            to 1000.
+        """
         
         if self.dist_r2_score >= self.r2_threshold:
 
@@ -282,10 +311,35 @@ class SyntheticDataGenerator():
     def plot_histogram(self, show_data:str='all', bins:int=25, xlabel:str=None, 
                        random_state:int = None, figsize:tuple=(6,3), 
                        n_synthetic_samples:int = 2000, n_epd_samples:int = 1000,
-                       show_probabilities:bool=True, show:bool=False,
-                       filepath:str=None, return_ax:bool = False, 
-                       show_stats:bool=False, ax:plt.Axes = None, 
-                       show_legend:bool=True):
+                       show_probabilities:bool=True, filepath:str=None, 
+                       return_ax:bool = False, show_stats:bool=False, 
+                       ax:plt.Axes = None, show_legend:bool=True) -> None:
+        """Plot histogram.
+
+        Args:
+            show_data (str, optional): Type of data to display: 'all', 
+            'synthetic' or 'actual. Defaults to 'all'.
+            bins (int, optional): Number of bins. Defaults to 25.
+            xlabel (str, optional): X-axis label. Defaults to None.
+            random_state (int, optional): Random state to ensure 
+            reproducibility. Defaults to None.
+            figsize (tuple, optional): Figure size. Defaults to (6,3).
+            n_synthetic_samples (int, optional): Number of synthetic data points 
+            to plot. Defaults to 2000.
+            n_epd_samples (int, optional): Number of estimated probability 
+            density points. Defaults to 1000.
+            show_probabilities (bool, optional): Show probabilities (density 
+            plot). Defaults to True.
+            filepath (str, optional): Path to save the figure. Defaults to None.
+            return_ax (bool, optional): Return axis object. Defaults to False.
+            show_stats (bool, optional): Show main statistics from distributon: 
+            mean, median, standard deviation and quartiles. Defaults to False.
+            ax (plt.Axes, optional): Axis object. Defaults to None.
+            show_legend (bool, optional): Show legend in plot. Defaults to True.
+
+        Raises:
+            ValueError: show_data parameter is invalid.
+        """
 
         
         # Get synthetic data if required.
