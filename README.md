@@ -1,20 +1,21 @@
-<div align="left">
-  <a> <img height="120px" src="docs/scapy-logo.png"></a>
+<div align="center">
+  <a> <img height="200px" src="docs/scapy-logo-named-cropped.png"></a>
 </div>
 
-# ***ScaPy*** 
-## Spacecraft Conjunction Assessment for Python 
-A Python library developed as part of the individual research project ***Spacecraft Conjunction Assessment optimization using Artificial Neural Networks on Conjunction Data Messages (CDMs)*** for the Master Science in Astronautics and Space Engineering (*Cranfield University*).
 
-## Research statement
-Low Earth Orbit (LEO) contains an ever increasing number of hazardous orbiting objects (satellites out of service, rocket bodies, shrapnels, ...etc) travelling at very high speed in an uncontrolled manner. Collisions at orbital speeds can generate fragments and potentially trigger a cascade of more collisions endangering the whole population, a scenario known since the late 1970s as the Kessler syndrome. If not properly managed, this uncontrolled increment of space debris pollution can seriously complicate current and future spacecraft operations. 
+# ***Spacecraft Conjunction Assessment for Python*** 
+ 
+A Python library developed as part of the research ***Spacecraft Conjunction Assessment optimisation using Deep Learning algorithms applied to Conjunction Data Messages (CDMs)***.
 
-Consequently, the successful implementation of spacecraft collision avoidance procedures is ever becoming essential. Specifically, the development and improvement of cutting-edge computational methodologies that enable satellite operators to plan risk mitigation measures. This latter point establishes the focus in which the research project is based on.
+
 
 ## Authors
 
-* José Javier Rosales, Cranfield University
-* Dr. Nicola Garzaniti, Cranfield University
+* José Javier Rosales Ruiz [[j.rosales-ruiz@cranfield.ac.uk](mailto:j.rosales-ruiz@cranfield.ac.uk)] <sup>a</sup>
+* Nicola Garzaniti [[nicola.garzaniti@cranfield.ac.uk](mailto:nicola.garzaniti@cranfield.ac.uk)] <sup>b</sup>
+
+<sup>a</sup> *Corresponding author*\
+<sup>b</sup> *Supervisor*
 
 ## License
 
