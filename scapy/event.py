@@ -22,8 +22,24 @@ mpl.rcParams['axes.unicode_minus'] = False
 
 #%% CLASS: DatasetEventDataset
 class DatasetEventDataset(Dataset):
+    """Dataset of Conjunction Event object instanciator.
+
+    Args:
+        Dataset (torch.utils.data): Pytorch Dataset module.
+    """
     def __init__(self, event_set:list, features:list, 
                  features_stats:dict = None) -> None:
+        """Initialises object instanciator
+
+        Args:
+            event_set (list): List of Conjunction Events sets.
+            features (list): CDM features to process.
+            features_stats (dict, optional): Statistics for normalisation (mean 
+            and standard deviation). Defaults to None.
+
+        Raises:
+            RuntimeError: Feature not recongised.
+        """
                  
         # Initialize the list of events.
         self._event_set = event_set
@@ -57,6 +73,11 @@ class DatasetEventDataset(Dataset):
             self._features_stats = features_stats
 
     def __len__(self) -> int:
+        """Compute number of Conjunction Events.
+
+        Returns:
+            int: Number of Conjunction Events.
+        """
         return len(self._event_set)
 
     def __getitem__(self, i:int) -> tuple:
@@ -115,9 +136,9 @@ class DatasetEventDataset(Dataset):
     
 #%% CLASS: EventsPlotting
 class EventsPlotting():
-
-    def __init__(self):
-        pass
+    """Plotting object instanciator common for Conjunction Events dataset 
+    classes.
+    """
 
     def plot_features(self, features:Union[list, str], figsize:tuple=None, 
                       axs:Union[np.ndarray, plt.Axes] = None, 
@@ -220,8 +241,14 @@ class EventsPlotting():
 
 #%% CLASS: ConjunctionEvent
 class ConjunctionEvent(EventsPlotting):
+    """Conjunction Event object instanciator.
+
+    Args:
+        EventsPlotting (class): Common class for Conjunction Events plotting.
+    """
     def __init__(self, cdms:list = None, filepaths:list = None) -> None:
-        """Initialize event object. Defaults to empty ConjunctionEvent (0 CDMs).
+        """Initialise object instanciator. Defaults to empty ConjunctionEvent 
+        (0 CDMs).
 
         Args:
             cdms (list, optional): List of CDM objects belonging to the event. 
@@ -450,11 +477,16 @@ class ConjunctionEvent(EventsPlotting):
 
 #%% CLASS: ConjunctionEventsDataset
 class ConjunctionEventsDataset(EventsPlotting):
+    """Conjunction Events Dataset object instanciator.
+
+    Args:
+        EventsPlotting (class): Common class for Conjunction Events plotting.
+    """
     def __init__(self, cdms_dir:str = None, cdm_extension:str = '.cdm.kvn.txt',
                  events:list = None) -> None:
-        """Initializes ConjunctionEventsDataset object importing text files 
-        containing CDM information in KVN format from a given folder or by 
-        passing a list of ConjunctionEvent objects.
+        """Initialises object instanciator importing text files containing CDM 
+        information in KVN format from a given folder or by passing a list of 
+        ConjunctionEvent objects.
 
         Args:
             cdms_dir (str, optional): Folder directory where all text files 

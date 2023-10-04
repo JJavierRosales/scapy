@@ -59,6 +59,14 @@ class CosineWarmupScheduler(optim.lr_scheduler._LRScheduler):
         return [base_lr * lr_factor for base_lr in self.base_lrs]
 
     def get_lr_factor(self, epoch:int) -> float:
+        """Get learning rate factor
+
+        Args:
+            epoch (int): Epoch of training.
+
+        Returns:
+            float: Learning rate factor.
+        """
 
         # Get learning factor using cosine trigonometric function.
         lr_factor = 0.5 * (1 + np.cos(np.pi * epoch / self.max_epochs))
@@ -75,6 +83,16 @@ class CosineWarmupScheduler(optim.lr_scheduler._LRScheduler):
     def plot_lr_factor(warmup_epochs:int, max_epochs:int, 
                        figsize:tuple = (8, 3), figtitle:str = None, 
                        filepath:str = None) -> None:
+        """Plot learning rate factor
+
+        Args:
+            warmup_epochs (int): Number of epochs for warm-up.
+            max_epochs (int): Maximum number of epochs for LR adaptation.
+            figsize (tuple, optional): Figure size. Defaults to (8, 3).
+            figtitle (str, optional): Figure title. Defaults to None.
+            filepath (str, optional): File path where plot is saved. Defaults to 
+            None.
+        """
         
         # Initialze lr scheduler with any optimizer and learnable parameter.
         p = nn.Parameter(torch.empty(4,4))

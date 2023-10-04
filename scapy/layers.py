@@ -46,8 +46,21 @@ import warnings
 # accurate forecasts by considering the relevant information across the 
 # entire sequence.
 class SelfAttentionLayer(nn.Module):
+    """Self-Attention layer instanciator
+
+    Args:
+        nn (torch.nn): Pytorch base module for any neural network development.
+    """
     def __init__(self, input_size:int, batch_first:bool=True, 
                  num_heads:int=1) -> None:
+        """Initialise self-attention layer object.
+
+        Args:
+            input_size (int): Number of inputs to the layer.
+            batch_first (bool, optional): Batch first. Defaults to True.
+            num_heads (int, optional): Number of parallel heads used for the 
+            attention mechanism. Defaults to 1.
+        """
 
         super(SelfAttentionLayer, self).__init__()
 
@@ -58,6 +71,14 @@ class SelfAttentionLayer(nn.Module):
                                                batch_first = batch_first)
 
     def forward(self, x:torch.Tensor) -> torch.Tensor:
+        """Process inputs through the layer.
+
+        Args:
+            x (torch.Tensor): Inputs.
+
+        Returns:
+            torch.Tensor: Outputs of the layer (same shape as inputs).
+        """
 
         attn_output = self.attention(query = x, 
                                      key = x, 
@@ -72,20 +93,20 @@ class RNNLayer(nn.Module):
     """
 
     def __init__(self, cell, input_size:int, hidden_size:int, **cell_args:dict):
-        """Initialize LSTM cell.
+        """Initialize RNN layer base.
 
         Args:
-            cell (constructor): LSTM cell constructor.
+            cell (constructor): RNN cell constructor.
             input_size (int): Number of inputs.
             hidden_size (int): Number of hidden cells (outputs of the cell).
             *cell_args (dict, optional): Dictionary containing optional 
-            arguments required for the LSTM cell constructor (i.e. SLIMX 
+            arguments required for the RNN cell constructor (i.e. SLIMX 
             constructor receives the additional parameter 'version').
         """
     
         super(RNNLayer, self).__init__()
         
-        # Initialize cell attribute in class witht the LSTM cell object 
+        # Initialize cell attribute in class witht the RNN cell object 
         # initialized.
         
         self.cell = cell(input_size = input_size, 
@@ -97,18 +118,18 @@ class RNNLayer(nn.Module):
         self.hidden_size = self.cell.hidden_size
         
 
-    def forward(self, input: torch.TensorFloat, state:Union[tuple,torch.Tensor]) -> tuple:
+    def forward(self, input: torch.Tensor, state:Union[tuple,torch.Tensor]) -> tuple:
         """Forward operation through all time steps of a given input.
 
         Args:
-            input (torch.TensorFloat): Tensor containing the values at every 
+            input (torch.Tensor): Tensor containing the values at every 
             time step of a sequence.
             state (tuple): Tuple of tensors containing previous hidden state and
             cell state (at time t-1) required to produce the next output.
 
         Returns:
             tuple: Tuple with two tensors:
-                - outputs (torch.TensorFloat): Forecasted values of X for the 
+                - outputs (torch.Tensor): Forecasted values of X for the 
                     next time step (ht ~ Xt+1) 
                 - states (tuple): Tuple containing  two tensors: one with the 
                     last hidden state (predicted Xt+1 value) and cell state 
@@ -128,7 +149,7 @@ class RNNLayer(nn.Module):
             out, state = self.cell(x_t, state)
             outputs += [out]
 
-        # Return the list of outputs produced by the LSTM cell and the last 
+        # Return the list of outputs produced by the RNN cell and the last 
         # hidden states at time t (hidden_state, cell_state).
 
         # Return predicted values at every time step (ht ~ Xt+1) and the last 
@@ -361,12 +382,11 @@ class GU(nn.Module):
 
         Args:
             input_size (int): Number of input features.
-            hidden_size (int): Number of hidden neurons (outputs of the LSTM).
-            cell (constructor): LSTM cell constructor.
-            num_layers (int, optional): Number of stacked LSTM layers (LSTM 
-            depth). Defaults to 1.
+            hidden_size (int): Number of hidden neurons (outputs of the RNN).
+            cell (constructor): RNN cell constructor.
+            num_layers (int, optional): Number of stacked layers. Defaults to 1.
             dropout (float, optional): Dropout probability to use 
-            between consecutive LSTM layers. Only applicable if num_layers is 
+            between consecutive layers. Only applicable if num_layers is 
             greater than 1. Defaults to None.
         """
     
@@ -394,15 +414,15 @@ class GU(nn.Module):
         # Convert list of LSTM layers to list of nn.Modules.
         self.layers = nn.ModuleList(layers)
         
-        # Introduces a Dropout layer on the outputs of each LSTM layer except
+        # Introduces a Dropout layer on the outputs of each layer except
         # the last layer.
         self.num_layers = num_layers
 
-        # If number of LSTM layers is 1 and the dropout_probability provided is
+        # If number of layers is 1 and the dropout_probability provided is
         # not None, print warning to the user.
         if num_layers == 1 and dropout > 0:
             warnings.warn(
-                "\nDropout parameter in LSTM class adds dropout layers after " 
+                "\nDropout parameter in GU class adds dropout layers after " 
                 "all but last recurrent layer. \nIt expects num_layers greater "
                 "> 1, but got num_layers = 1."
             )

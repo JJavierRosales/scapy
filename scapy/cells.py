@@ -11,10 +11,17 @@ import warnings
 #%% CLASS: BIAS
 class Bias(nn.Module):
     """
-    A learnable bias layer for gates with no weight parameters in LSTM cell 
+    A learnable bias layer for gates with no weight parameters in RNN cell 
     architectures.
     """
     def __init__(self, input_size:int, bias_value:float = None) -> None:
+        """Initialises learnable bias layer for gates with no weight parameters 
+        in RNN cell architectures.
+
+        Args:
+            input_size (int): Number of inputs.
+            bias_value (float, optional): Bias value. Defaults to None.
+        """
         super().__init__()
         if bias_value is None:
             bias_value = torch.randn((input_size))
@@ -23,7 +30,15 @@ class Bias(nn.Module):
 
         self.bias_layer = torch.nn.Parameter(bias_value)
     
-    def forward(self, x:torch.TensorFloat) -> torch.TensorFloat:
+    def forward(self, x:torch.Tensor) -> torch.Tensor:
+        """Process inputs through the layer.
+
+        Args:
+            x (torch.Tensor): Inputs to add the bias values.
+
+        Returns:
+            torch.Tensor: Outputs of the bias layer.
+        """
         return x + self.bias_layer
 #%% CLASS: LSTM VANILLA CELL ARCHITECTURE
 class LSTM_Vanilla(nn.Module):
@@ -32,34 +47,35 @@ class LSTM_Vanilla(nn.Module):
     activation functions.
     """
     def __init__(self, input_size:int, hidden_size:int) -> None:
-        """Initialize LSTM vanilla cell class.
+        """Initialise LSTM cell with input, forget, output and cell gates and 
+        associated activation functions.
 
         Args:
             input_size (int): Number of input features.
-            hidden_size (int): Number of hidden neurons (outputs of the LSTM).
+            hidden_size (int): Number of hidden neurons.
         """
     
         super(LSTM_Vanilla, self).__init__()
         
-        # Initialize inputs and hidden sizes
+        # Initialise inputs and hidden sizes
         self.input_size = input_size
         self.hidden_size = hidden_size
 
-        # Initialize activation functions
+        # Initialise activation functions
         self._sigmoid = nn.Sigmoid()
         self._tanh = nn.Tanh()
         
-        # Initialize gate components (weight and bias) for every gate:
+        # Initialise gate components (weight and bias) for every gate:
         for gate in ['forget','input','cell','output']:
         
-            # Initialize gate weights (Wxg) that will process inputs at time t.
+            # Initialise gate weights (Wxg) that will process inputs at time t.
             # Gate component computation = Wxg * xt
             setattr(self,f'gate_{gate}_x',
                 nn.Linear(in_features = self.input_size, 
                           out_features = self.hidden_size, 
                           bias = True))
             
-            # Initialize gate weights (Whg) that will process hidden states at 
+            # Initialise gate weights (Whg) that will process hidden states at 
             # time t-1, including bias associated to the gate.
             # Gate component computation = h[t-1]*Whg + bg
             setattr(self,f'gate_{gate}_h',
@@ -68,24 +84,24 @@ class LSTM_Vanilla(nn.Module):
                           bias = True))
         
         
-    def _forward_gate(self, gate:str, x:torch.TensorFloat, h:torch.TensorFloat, 
-            input_gate:torch.TensorFloat = None,
-            forget_gate:torch.TensorFloat = None,
-            c_prev:torch.TensorFloat = None) -> torch.TensorFloat:
-        """Forward operation through nominated gate.
+    def _forward_gate(self, gate:str, x:torch.Tensor, h:torch.Tensor, 
+            input_gate:torch.Tensor = None,
+            forget_gate:torch.Tensor = None,
+            c_prev:torch.Tensor = None) -> torch.Tensor:
+        """Forward method to process inputs and states through a specific gate.
 
         Args:
             gate (str): Name of the gate upon which the forward operation is 
             performed.
-            x (torch.TensorFloat): Input tensor at time t.
-            h (torch.TensorFloat): Previous hidden states (at time t-1).
-            input_gate (torch.TensorFloat, optional): Tensor with the outputs 
+            x (torch.Tensor): Input tensor at time t.
+            h (torch.Tensor): Previous hidden states (at time t-1).
+            input_gate (torch.Tensor, optional): Tensor with the outputs 
             from the input gate. Only required when gate is set to 'cell'. 
             Defaults to None.
-            forget_gate (torch.TensorFloat, optional): Tensor with the outputs 
+            forget_gate (torch.Tensor, optional): Tensor with the outputs 
             from the forget gate. Only required when gate is set to 'cell'. 
             Defaults to None.
-            c_prev (torch.TensorFloat, optional): Tensor with the previous cell 
+            c_prev (torch.Tensor, optional): Tensor with the previous cell 
             state (at time t-1). Only required when gate is set to 'cell'. 
             Defaults to None.
 
@@ -95,7 +111,7 @@ class LSTM_Vanilla(nn.Module):
             is not provided.
 
         Returns:
-            torch.TensorFloat: Tensor with the output of the gate.
+            torch.Tensor: Tensor with the output of the gate.
         """
     
         # Check gate requested is within LSTM cell arquitecture.
@@ -131,11 +147,11 @@ class LSTM_Vanilla(nn.Module):
             return self._sigmoid(x + h)
    
 
-    def forward(self, x:torch.TensorFloat, hidden_states:tuple) -> tuple:
-        """Forward for the cell.
+    def forward(self, x:torch.Tensor, hidden_states:tuple) -> tuple:
+        """Process inputs through the cell.
 
         Args:
-            x (torch.TensorFloat): Inputs to process through the cell.
+            x (torch.Tensor): Inputs to process through the cell.
             hidden_states (tuple): Tuple containing two tensors with the hidden 
             state and cell state respectively at time t-1.
 
@@ -179,11 +195,11 @@ class LSTM_SLIMX(nn.Module):
         SLIM3 - Gates contain only learnable bias (b).
     """
     def __init__(self, input_size:int, hidden_size:int, version:int = 1) -> None:
-        """Initialize LSTM SLIM cell class.
+        """Initialise LSTM SLIM cell object.
 
         Args:
-            input_size (int): Number of inputs.
-            hidden_size (int): Number of hidden cells (outputs of the LSTM).
+            input_size (int): Number of input features.
+            hidden_size (int): Number of hidden neurons.
             version (int, optional): Version of the cell architecture to 
             use. Three versions are available:
                 1 - Gates contain hidden states components and bias (Wh + b).
@@ -194,30 +210,30 @@ class LSTM_SLIMX(nn.Module):
         
         super(LSTM_SLIMX, self).__init__()
         
-        # Initialize inputs and hidden sizes
+        # Initialise inputs and hidden sizes
         self.input_size = input_size
         self.hidden_size = hidden_size
         self._version = version
 
-        # Initialize activation functions
+        # Initialise activation functions
         self._sigmoid = nn.Sigmoid()
         self._tanh = nn.Tanh()
         
-        # Initialize gate components (weight and bias) for every gate:
+        # Initialise gate components (weight and bias) for every gate:
         for gate in ['forget','input','cell','output']:
         
             # In the SLIM architecture, only the cell gate received the values 
-            # from the inputs. Therefore weights (Wxg) are only initialized for 
+            # from the inputs. Therefore weights (Wxg) are only Initialised for 
             # the cell gate.
             if gate=='cell':
-                # Initialize gate weights (Wxc) that will process inputs at t.
+                # Initialise gate weights (Wxc) that will process inputs at t.
                 # Gate component computation = Wxc * xt + bc
                 setattr(self,f'gate_{gate}_x',
                     nn.Linear(in_features = self.input_size, 
                               out_features = self.hidden_size, 
                               bias = True))
                               
-                # Initialize gate weights (Whc) that will process hidden states  
+                # Initialise gate weights (Whc) that will process hidden states  
                 # at time t-1, including bias associated to the gate.
                 # Gate component computation = h[t-1]*Whc.
                 setattr(self,f'gate_{gate}_h',
@@ -226,9 +242,9 @@ class LSTM_SLIMX(nn.Module):
                               bias = False))
             else:
         
-                # If SLIM1 or SLIM2, initialize gate weight components.
+                # If SLIM1 or SLIM2, Initialise gate weight components.
                 if version<=2:
-                    # Initialize gate components that will process hidden 
+                    # Initialise gate components that will process hidden 
                     # states at time t-1, including bias associated to the gate 
                     # if SLIM1.
                     # Gate component computation = h[t-1]*Whg + <bg>
@@ -238,30 +254,30 @@ class LSTM_SLIMX(nn.Module):
                                   bias = True if version == 1 else False))
                 else:
                                   
-                    # Initialize gate bias (bg) that will process hidden states 
+                    # Initialise gate bias (bg) that will process hidden states 
                     # at t-1.
                     setattr(self, f'gate_{gate}_h', 
                             Bias(self.hidden_size))
                 
 
-    def _forward_gate(self, gate:str, x:torch.TensorFloat, h:torch.TensorFloat, 
-            input_gate:torch.TensorFloat = None,
-            forget_gate:torch.TensorFloat = None,
-            c_prev:torch.TensorFloat = None) -> torch.TensorFloat:
-        """Forward operation through nominated gate.
+    def _forward_gate(self, gate:str, x:torch.Tensor, h:torch.Tensor, 
+            input_gate:torch.Tensor = None,
+            forget_gate:torch.Tensor = None,
+            c_prev:torch.Tensor = None) -> torch.Tensor:
+        """Forward method to process inputs and states through a specific gate.
 
         Args:
             gate (str): Name of the gate upon which the forward operation is 
             performed.
-            x (torch.TensorFloat):  Input tensor at time t.
-            h (torch.TensorFloat): Previous hidden states (at time t-1).
-            input_gate (torch.TensorFloat, optional): Tensor with the outputs 
+            x (torch.Tensor):  Input tensor at time t.
+            h (torch.Tensor): Previous hidden states (at time t-1).
+            input_gate (torch.Tensor, optional): Tensor with the outputs 
             from the input gate. Only required when gate is set to 'cell'. 
             Defaults to None. 
-            forget_gate (torch.TensorFloat, optional): Tensor with the outputs 
+            forget_gate (torch.Tensor, optional): Tensor with the outputs 
             from the forget gate. Only required when gate is set to 'cell'. 
             Defaults to None.
-            c_prev (torch.TensorFloat, optional): Tensor with the previous cell 
+            c_prev (torch.Tensor, optional): Tensor with the previous cell 
             state (at time t-1). Only required when gate is set to 'cell'. 
             Defaults to None.
 
@@ -271,7 +287,7 @@ class LSTM_SLIMX(nn.Module):
             is not provided.
 
         Returns:
-            torch.TensorFloat: Tensor with the output of the gate.
+            torch.Tensor: Tensor with the output of the gate.
         """
     
         # Check gate requested is within LSTM cell arquitecture.
@@ -308,11 +324,11 @@ class LSTM_SLIMX(nn.Module):
             return self._sigmoid(h)
    
 
-    def forward(self, x:torch.TensorFloat, hidden_states:tuple) -> tuple:
-        """Forward for the cell.
+    def forward(self, x:torch.Tensor, hidden_states:tuple) -> tuple:
+        """Process inputs through the cell.
 
         Args:
-            x (torch.TensorFloat): Inputs to process through the cell.
+            x (torch.Tensor): Inputs to process through the cell.
             hidden_states (tuple): Tuple containing two tensors with the hidden 
             state and cell state respectively at time t-1.
 
@@ -350,14 +366,26 @@ class LSTM_NXG(nn.Module):
     LSTM cell with either the input, forget, or output gates cancelled out.
     """
     def __init__(self, input_size:int, hidden_size:int, drop_gate:str) -> None:
+        """Initilalises LSTM cell with either the input, forget, or output gates 
+        cancelled out.
+
+        Args:
+            input_size (int): Number of input features.
+            hidden_size (int): Number of hidden neurons.
+            drop_gate (str): Gate to remove from the cell.
+
+        Raises:
+            ValueError: drop_gate parameter does not correspond with any 
+            internal gate.
+        """
     
         super(LSTM_NXG, self).__init__()
         
-        # Initialize inputs and hidden sizes
+        # Initialise inputs and hidden sizes
         self.input_size = input_size
         self.hidden_size = hidden_size
 
-        # Initialize activation functions
+        # Initialise activation functions
         self._sigmoid = nn.Sigmoid()
         self._tanh = nn.Tanh()
         
@@ -367,20 +395,20 @@ class LSTM_NXG(nn.Module):
         
         self.drop_gate = drop_gate
         
-        # Initialize gate components (weight and bias) for every gate:
+        # Initialise gate components (weight and bias) for every gate:
         for gate in ['forget','input','cell','output']:
         
             # Skip initialization for the gate to drop.
             if drop_gate == gate: continue
         
-            # Initialize gate weights (Wxg) that will process inputs at time t.
+            # Initialise gate weights (Wxg) that will process inputs at time t.
             # Gate component computation = Wxg * xt
             setattr(self,f'gate_{gate}_x',
                 nn.Linear(in_features = self.input_size, 
                           out_features = self.hidden_size, 
                           bias = True))
             
-            # Initialize gate weights (Whg) that will process hidden states at 
+            # Initialise gate weights (Whg) that will process hidden states at 
             # time t-1, including bias associated to the gate.
             # Gate component computation = h[t-1]*Whg + bg
             setattr(self,f'gate_{gate}_h',
@@ -389,10 +417,31 @@ class LSTM_NXG(nn.Module):
                           bias = True))
         
         
-    def _forward_gate(self, gate:str, x:torch.TensorFloat, h:torch.TensorFloat, 
-            input_gate:torch.TensorFloat = None,
-            forget_gate:torch.TensorFloat = None,
-            c_prev:torch.TensorFloat = None) -> torch.TensorFloat:
+    def _forward_gate(self, gate:str, x:torch.Tensor, h:torch.Tensor, 
+            input_gate:torch.Tensor = None,
+            forget_gate:torch.Tensor = None,
+            c_prev:torch.Tensor = None) -> torch.Tensor:
+        """Forward method to process inputs and states through a specific gate.
+
+        Args:
+            gate (str): Cell gate.
+            x (torch.Tensor): Inputs passed to the cell.
+            h (torch.Tensor): Hidden states passed to the cell.
+            input_gate (torch.Tensor, optional): Input gate outputs. Defaults to 
+            None.
+            forget_gate (torch.Tensor, optional): Forget gate outputs. Defaults 
+            to None.
+            c_prev (torch.Tensor, optional): Previous cell states. Defaults 
+            to None.
+
+        Raises:
+            ValueError: Gate not defined.
+            ValueError: Parameter(s) input_gate, forget_gate, and/or c_prev 
+            missing.
+
+        Returns:
+            torch.Tensor: Output of the gate.
+        """
         
         # Cancel the effect of the gate by making it 1.
         if self.drop_gate == gate: return 1
@@ -428,7 +477,18 @@ class LSTM_NXG(nn.Module):
             return self._sigmoid(x + h)
    
 
-    def forward(self, x:torch.TensorFloat, hidden_states:tuple) -> tuple:
+    def forward(self, x:torch.Tensor, hidden_states:tuple) -> tuple:
+        """Process inputs through the cell.
+
+        Args:
+            x (torch.Tensor): Inputs to process through the cell.
+            hidden_states (tuple): Tuple containing two tensors with the hidden 
+            state and cell state respectively at time t-1.
+
+        Returns:
+            tuple: Tuple containing two tensors with the hidden state and cell 
+            state values at time t.
+        """
     
         # Get hidden states from t-1.
         h_prev, c_prev = hidden_states
@@ -460,29 +520,37 @@ class LSTM_NXGAF(nn.Module):
     outputs or cell gates.
     """
     def __init__(self, input_size:int, hidden_size:int, naf_gate:str) -> None:
+        """Initialise LSTM cell with the no activation function in either the 
+        inputs, forget or outputs gates.
+
+        Args:
+            input_size (int): Number of input features.
+            hidden_size (int): Number of hidden neurons.
+            naf_gate (str): Gate where the activation function is cancelled.
+        """
     
         super(LSTM_NXGAF, self).__init__()
         
-        # Initialize inputs and hidden sizes
+        # Initialise inputs and hidden sizes
         self.input_size = input_size
         self.hidden_size = hidden_size
         self.naf_gate = naf_gate
 
-        # Initialize activation functions
+        # Initialise activation functions
         self._sigmoid = nn.Sigmoid()
         self._tanh = nn.Tanh()
         
-        # Initialize gate components (weight and bias) for every gate:
+        # Initialise gate components (weight and bias) for every gate:
         for gate in ['forget','input','cell','output']:
         
-            # Initialize gate weights (Wxg) that will process inputs at time t.
+            # Initialise gate weights (Wxg) that will process inputs at time t.
             # Gate component computation = Wxg * xt
             setattr(self,f'gate_{gate}_x',
                 nn.Linear(in_features = self.input_size, 
                           out_features = self.hidden_size, 
                           bias = True))
             
-            # Initialize gate weights (Whg) that will process hidden states at 
+            # Initialise gate weights (Whg) that will process hidden states at 
             # time t-1, including bias associated to the gate.
             # Gate component computation = h[t-1]*Whg + bg
             setattr(self,f'gate_{gate}_h',
@@ -491,10 +559,31 @@ class LSTM_NXGAF(nn.Module):
                           bias = True))
         
         
-    def _forward_gate(self, gate:str, x:torch.TensorFloat, h:torch.TensorFloat, 
-            input_gate:torch.TensorFloat = None,
-            forget_gate:torch.TensorFloat = None,
-            c_prev:torch.TensorFloat = None) -> torch.TensorFloat:
+    def _forward_gate(self, gate:str, x:torch.Tensor, h:torch.Tensor, 
+            input_gate:torch.Tensor = None,
+            forget_gate:torch.Tensor = None,
+            c_prev:torch.Tensor = None) -> torch.Tensor:
+        """Forward method to process inputs and states through a specific gate.
+
+        Args:
+            gate (str): Cell gate.
+            x (torch.Tensor): Inputs passed to the cell.
+            h (torch.Tensor): Hidden states passed to the cell.
+            input_gate (torch.Tensor, optional): Input gate outputs. Defaults to 
+            None.
+            forget_gate (torch.Tensor, optional): Forget gate outputs. Defaults 
+            to None.
+            c_prev (torch.Tensor, optional): Previous cell states. Defaults 
+            to None.
+
+        Raises:
+            ValueError: Gate not defined.
+            ValueError: Parameter(s) input_gate, forget_gate, and/or c_prev 
+            missing.
+
+        Returns:
+            torch.Tensor: Output of the gate.
+        """
     
         # Check gate requested is within LSTM cell arquitecture.
         if not gate in ['forget','input','cell','output']:
@@ -530,7 +619,18 @@ class LSTM_NXGAF(nn.Module):
             return (x + h) if self.naf_gate == 'cell' else self._sigmoid(x + h)
    
 
-    def forward(self, x:torch.TensorFloat, hidden_states:tuple) -> tuple:
+    def forward(self, x:torch.Tensor, hidden_states:tuple) -> tuple:
+        """Process inputs through the cell.
+
+        Args:
+            x (torch.Tensor): Inputs to process through the cell.
+            hidden_states (tuple): Tuple containing two tensors with the hidden 
+            state and cell state respectively at time t-1.
+
+        Returns:
+            tuple: Tuple containing two tensors with the hidden state and cell 
+            state values at time t.
+        """
     
         # Get hidden states from t-1.
         h_prev, c_prev = hidden_states
@@ -560,34 +660,35 @@ class LSTM_FB1(nn.Module):
     associated activation functions.
     """
     def __init__(self, input_size:int, hidden_size:int) -> None:
-        """Initialize LSTM vanilla cell class.
+        """Initialise LSTM with Forget Bias=1 cell with input, forget, output 
+        and cell gates and associated activation functions.
 
         Args:
             input_size (int): Number of input features.
-            hidden_size (int): Number of hidden neurons (outputs of the LSTM).
+            hidden_size (int): Number of hidden neurons.
         """
     
         super(LSTM_FB1, self).__init__()
         
-        # Initialize inputs and hidden sizes
+        # Initialise inputs and hidden sizes
         self.input_size = input_size
         self.hidden_size = hidden_size
 
-        # Initialize activation functions
+        # Initialise activation functions
         self._sigmoid = nn.Sigmoid()
         self._tanh = nn.Tanh()
         
-        # Initialize gate components (weight and bias) for every gate:
+        # Initialise gate components (weight and bias) for every gate:
         for gate in ['forget','input','cell','output']:
         
-            # Initialize gate weights (Wxg) that will process inputs at time t.
+            # Initialise gate weights (Wxg) that will process inputs at time t.
             # Gate component computation = Wxg * xt
             setattr(self,f'gate_{gate}_x',
                 nn.Linear(in_features = self.input_size, 
                           out_features = self.hidden_size, 
                           bias = True if gate!='forget' else False))
             
-            # Initialize gate weights (Whg) that will process hidden states at 
+            # Initialise gate weights (Whg) that will process hidden states at 
             # time t-1, including bias associated to the gate.
             # Gate component computation = h[t-1]*Whg + bg
             setattr(self,f'gate_{gate}_h',
@@ -599,24 +700,24 @@ class LSTM_FB1(nn.Module):
                 Bias(input_size = hidden_size, 
                         bias_value = 1 if gate=='forget' else None))
         
-    def _forward_gate(self, gate:str, x:torch.TensorFloat, h:torch.TensorFloat, 
-            input_gate:torch.TensorFloat = None,
-            forget_gate:torch.TensorFloat = None,
-            c_prev:torch.TensorFloat = None) -> torch.TensorFloat:
-        """Forward operation through nominated gate.
+    def _forward_gate(self, gate:str, x:torch.Tensor, h:torch.Tensor, 
+            input_gate:torch.Tensor = None,
+            forget_gate:torch.Tensor = None,
+            c_prev:torch.Tensor = None) -> torch.Tensor:
+        """Forward method to process inputs and states through a specific gate.
 
         Args:
             gate (str): Name of the gate upon which the forward operation is 
             performed.
-            x (torch.TensorFloat): Input tensor at time t.
-            h (torch.TensorFloat): Previous hidden states (at time t-1).
-            input_gate (torch.TensorFloat, optional): Tensor with the outputs 
+            x (torch.Tensor): Input tensor at time t.
+            h (torch.Tensor): Previous hidden states (at time t-1).
+            input_gate (torch.Tensor, optional): Tensor with the outputs 
             from the input gate. Only required when gate is set to 'cell'. 
             Defaults to None.
-            forget_gate (torch.TensorFloat, optional): Tensor with the outputs 
+            forget_gate (torch.Tensor, optional): Tensor with the outputs 
             from the forget gate. Only required when gate is set to 'cell'. 
             Defaults to None.
-            c_prev (torch.TensorFloat, optional): Tensor with the previous cell 
+            c_prev (torch.Tensor, optional): Tensor with the previous cell 
             state (at time t-1). Only required when gate is set to 'cell'. 
             Defaults to None.
 
@@ -626,7 +727,7 @@ class LSTM_FB1(nn.Module):
             is not provided.
 
         Returns:
-            torch.TensorFloat: Tensor with the output of the gate.
+            torch.Tensor: Tensor with the output of the gate.
         """
     
         # Check gate requested is within LSTM cell arquitecture.
@@ -664,11 +765,11 @@ class LSTM_FB1(nn.Module):
             return self._sigmoid(x + h + b)
    
 
-    def forward(self, x:torch.TensorFloat, hidden_states:tuple) -> tuple:
-        """Forward for the cell.
+    def forward(self, x:torch.Tensor, hidden_states:tuple) -> tuple:
+        """Process inputs through the cell.
 
         Args:
-            x (torch.TensorFloat): Inputs to process through the cell.
+            x (torch.Tensor): Inputs to process through the cell.
             hidden_states (tuple): Tuple containing two tensors with the hidden 
             state and cell state respectively at time t-1.
 
@@ -707,34 +808,35 @@ class LSTM_CIFG(nn.Module):
     gates and associated activation functions.
     """
     def __init__(self, input_size:int, hidden_size:int) -> None:
-        """Initialize LSTM vanilla cell class.
+        """Initialise coupled Input Forget Gate LSTM cell with input, forget, 
+        output and cell gates and associated activation functions.
 
         Args:
             input_size (int): Number of input features.
-            hidden_size (int): Number of hidden neurons (outputs of the LSTM).
+            hidden_size (int): Number of hidden neurons.
         """
     
         super(LSTM_CIFG, self).__init__()
         
-        # Initialize inputs and hidden sizes
+        # Initialise inputs and hidden sizes
         self.input_size = input_size
         self.hidden_size = hidden_size
 
-        # Initialize activation functions
+        # Initialise activation functions
         self._sigmoid = nn.Sigmoid()
         self._tanh = nn.Tanh()
         
-        # Initialize gate components (weight and bias) for every gate:
+        # Initialise gate components (weight and bias) for every gate:
         for gate in ['input','cell','output']:
         
-            # Initialize gate weights (Wxg) that will process inputs at time t.
+            # Initialise gate weights (Wxg) that will process inputs at time t.
             # Gate component computation = Wxg * xt
             setattr(self,f'gate_{gate}_x',
                 nn.Linear(in_features = self.input_size, 
                           out_features = self.hidden_size, 
                           bias = True))
             
-            # Initialize gate weights (Whg) that will process hidden states at 
+            # Initialise gate weights (Whg) that will process hidden states at 
             # time t-1, including bias associated to the gate.
             # Gate component computation = h[t-1]*Whg + bg
             setattr(self,f'gate_{gate}_h',
@@ -743,23 +845,21 @@ class LSTM_CIFG(nn.Module):
                           bias = True))
         
         
-    def _forward_gate(self, gate:str, x:torch.TensorFloat, h:torch.TensorFloat, 
-            input_gate:torch.TensorFloat = None,
-            c_prev:torch.TensorFloat = None) -> torch.TensorFloat:
-        """Forward operation through nominated gate.
+    def _forward_gate(self, gate:str, x:torch.Tensor, h:torch.Tensor, 
+            input_gate:torch.Tensor = None,
+            c_prev:torch.Tensor = None) -> torch.Tensor:
+        """Forward method to process inputs and states through a specific gate.
 
         Args:
             gate (str): Name of the gate upon which the forward operation is 
             performed.
-            x (torch.TensorFloat): Input tensor at time t.
-            h (torch.TensorFloat): Previous hidden states (at time t-1).
-            input_gate (torch.TensorFloat, optional): Tensor with the outputs 
+            x (torch.Tensor): Input tensor at time t.
+            h (torch.Tensor): Previous hidden states (at time t-1).
+            input_gate (torch.Tensor, optional): Tensor with the outputs 
             from the input gate. Only required when gate is set to 'cell'. 
+            Defaults to None. 
             Defaults to None.
-            forget_gate (torch.TensorFloat, optional): Tensor with the outputs 
-            from the forget gate. Only required when gate is set to 'cell'. 
-            Defaults to None.
-            c_prev (torch.TensorFloat, optional): Tensor with the previous cell 
+            c_prev (torch.Tensor, optional): Tensor with the previous cell 
             state (at time t-1). Only required when gate is set to 'cell'. 
             Defaults to None.
 
@@ -769,7 +869,7 @@ class LSTM_CIFG(nn.Module):
             is not provided.
 
         Returns:
-            torch.TensorFloat: Tensor with the output of the gate.
+            torch.Tensor: Tensor with the output of the gate.
         """
     
         # Check gate requested is within LSTM cell arquitecture.
@@ -805,11 +905,11 @@ class LSTM_CIFG(nn.Module):
             return self._sigmoid(x + h)
    
 
-    def forward(self, x:torch.TensorFloat, hidden_states:tuple) -> tuple:
-        """Forward for the cell.
+    def forward(self, x:torch.Tensor, hidden_states:tuple) -> tuple:
+        """Process inputs through the cell.
 
         Args:
-            x (torch.TensorFloat): Inputs to process through the cell.
+            x (torch.Tensor): Inputs to process through the cell.
             hidden_states (tuple): Tuple containing two tensors with the hidden 
             state and cell state respectively at time t-1.
 
@@ -846,34 +946,35 @@ class LSTM_PC(nn.Module):
     associated activation functions.
     """
     def __init__(self, input_size:int, hidden_size:int) -> None:
-        """Initialize LSTM vanilla cell class.
+        """Initialise Peephole Connections LSTM cell with input, forget, output 
+        and cell gates and associated activation functions.
 
         Args:
             input_size (int): Number of input features.
-            hidden_size (int): Number of hidden neurons (outputs of the LSTM).
+            hidden_size (int): Number of hidden neurons.
         """
     
         super(LSTM_PC, self).__init__()
         
-        # Initialize inputs and hidden sizes
+        # Initialise inputs and hidden sizes
         self.input_size = input_size
         self.hidden_size = hidden_size
 
-        # Initialize activation functions
+        # Initialise activation functions
         self._sigmoid = nn.Sigmoid()
         self._tanh = nn.Tanh()
         
-        # Initialize gate components (weight and bias) for every gate:
+        # Initialise gate components (weight and bias) for every gate:
         for gate in ['forget','input','cell','output']:
         
-            # Initialize gate weights (Wxg) that will process inputs at time t.
+            # Initialise gate weights (Wxg) that will process inputs at time t.
             # Gate component computation = Wxg * xt
             setattr(self,f'gate_{gate}_x',
                 nn.Linear(in_features = self.input_size, 
                           out_features = self.hidden_size, 
                           bias = True))
             
-            # Initialize gate weights (Whg) that will process hidden states at 
+            # Initialise gate weights (Whg) that will process hidden states at 
             # time t-1, including bias associated to the gate.
             # Gate component computation = h[t-1]*Whg + bg
             setattr(self,f'gate_{gate}_h',
@@ -884,7 +985,7 @@ class LSTM_PC(nn.Module):
 
             if gate!='cell':
 
-                # Initialize gate weights (Wcg) that will process cell states 
+                # Initialise gate weights (Wcg) that will process cell states 
                 # at time t-1, including bias associated to the gate.
                 # Gate component computation = c[t-1]*Wcg + bg
                 setattr(self,f'gate_{gate}_c',
@@ -894,24 +995,24 @@ class LSTM_PC(nn.Module):
 
         
         
-    def _forward_gate(self, gate:str, x:torch.TensorFloat, h:torch.TensorFloat, 
-            input_gate:torch.TensorFloat = None,
-            forget_gate:torch.TensorFloat = None,
-            c_prev:torch.TensorFloat = None) -> torch.TensorFloat:
-        """Forward operation through nominated gate.
+    def _forward_gate(self, gate:str, x:torch.Tensor, h:torch.Tensor, 
+            input_gate:torch.Tensor = None,
+            forget_gate:torch.Tensor = None,
+            c_prev:torch.Tensor = None) -> torch.Tensor:
+        """Forward method to process inputs and states through a specific gate.
 
         Args:
             gate (str): Name of the gate upon which the forward operation is 
             performed.
-            x (torch.TensorFloat): Input tensor at time t.
-            h (torch.TensorFloat): Previous hidden states (at time t-1).
-            input_gate (torch.TensorFloat, optional): Tensor with the outputs 
+            x (torch.Tensor): Input tensor at time t.
+            h (torch.Tensor): Previous hidden states (at time t-1).
+            input_gate (torch.Tensor, optional): Tensor with the outputs 
             from the input gate. Only required when gate is set to 'cell'. 
             Defaults to None.
-            forget_gate (torch.TensorFloat, optional): Tensor with the outputs 
+            forget_gate (torch.Tensor, optional): Tensor with the outputs 
             from the forget gate. Only required when gate is set to 'cell'. 
             Defaults to None.
-            c_prev (torch.TensorFloat, optional): Tensor with the previous cell 
+            c_prev (torch.Tensor, optional): Tensor with the previous cell 
             state (at time t-1). Only required when gate is set to 'cell'. 
             Defaults to None.
 
@@ -921,7 +1022,7 @@ class LSTM_PC(nn.Module):
             is not provided.
 
         Returns:
-            torch.TensorFloat: Tensor with the output of the gate.
+            torch.Tensor: Tensor with the output of the gate.
         """
     
         # Check gate requested is within LSTM cell arquitecture.
@@ -958,11 +1059,11 @@ class LSTM_PC(nn.Module):
             return self._sigmoid(x + h + c)
    
 
-    def forward(self, x:torch.TensorFloat, hidden_states:tuple) -> tuple:
-        """Forward for the cell.
+    def forward(self, x:torch.Tensor, hidden_states:tuple) -> tuple:
+        """Process inputs through the cell.
 
         Args:
-            x (torch.TensorFloat): Inputs to process through the cell.
+            x (torch.Tensor): Inputs to process through the cell.
             hidden_states (tuple): Tuple containing two tensors with the hidden 
             state and cell state respectively at time t-1.
 
@@ -1003,28 +1104,35 @@ class GRU_Vanilla(nn.Module):
     associated activation functions.
     """
     def __init__(self, input_size:int, hidden_size:int) -> None:
+        """Initialise Vanilla Gate Recurrent Unit (GRU) cell with update, reset 
+        gates and associated activation functions.
+
+        Args:
+            input_size (int): Number of input features.
+            hidden_size (int): Number of hidden neurons.
+        """
 
         super(GRU_Vanilla, self).__init__()
         
-        # Initialize inputs and hidden sizes
+        # Initialise inputs and hidden sizes
         self.input_size = input_size
         self.hidden_size = hidden_size
 
-        # Initialize activation functions
+        # Initialise activation functions
         self._sigmoid = nn.Sigmoid()
         self._tanh = nn.Tanh()
         
-        # Initialize gate components (weight and bias) for every gate:
+        # Initialise gate components (weight and bias) for every gate:
         for gate in ['update','reset', 'hidden']:
         
-            # Initialize gate weights (Wxg) that will process inputs at time t.
+            # Initialise gate weights (Wxg) that will process inputs at time t.
             # Gate component computation = Wxg * xt
             setattr(self,f'gate_{gate}_x',
                 nn.Linear(in_features = self.input_size, 
                           out_features = self.hidden_size, 
                           bias = False))
             
-            # Initialize gate weights (Whg) that will process hidden states at 
+            # Initialise gate weights (Whg) that will process hidden states at 
             # time t-1, including bias associated to the gate.
             # Gate component computation = h[t-1]*Whg + bg
             setattr(self,f'gate_{gate}_h',
@@ -1033,8 +1141,26 @@ class GRU_Vanilla(nn.Module):
                           bias = True))
             
 
-    def _forward_gate(self, gate:str, x:torch.TensorFloat, h:torch.TensorFloat, 
-            reset_gate:torch.TensorFloat = None) -> torch.TensorFloat:
+    def _forward_gate(self, gate:str, x:torch.Tensor, h:torch.Tensor, 
+            reset_gate:torch.Tensor = None) -> torch.Tensor:
+        """Forward method to process inputs and states through a specific gate.
+
+        Args:
+            gate (str): Name of the gate upon which the forward operation is 
+            performed.
+            x (torch.Tensor): Input tensor at time t.
+            h (torch.Tensor): Previous hidden states (at time t-1).
+            reset_gate (torch.Tensor, optional): Tensor with the outputs 
+            from the reset gate. Defaults to None.
+
+        Raises:
+            ValueError: Gate is not defined.
+            ValueError: One of the parameters required when cell is set to gate 
+            is not provided.
+
+        Returns:
+            torch.Tensor: Tensor with the output of the gate.
+        """
     
         # Check gate requested is within GRU cell arquitecture.
         if not gate in ['update','reset','hidden']:
@@ -1062,7 +1188,17 @@ class GRU_Vanilla(nn.Module):
             # Apply sigmoid function to gate.
             return self._sigmoid(x + h)
         
-    def forward(self, x:torch.TensorFloat, h_prev:torch.TensorFloat) -> tuple:
+    def forward(self, x:torch.Tensor, h_prev:torch.Tensor) -> tuple:
+        """Process inputs through the cell.
+
+        Args:
+            x (torch.Tensor): Inputs to process through the cell.
+            h_prev (torch.Tensor): Tensor with the hidden state at time t-1.
+
+        Returns:
+            tuple: Tuple containing two tensors with the hidden state values at 
+            time t.
+        """
         
 
         # Get outputs from update gate.
@@ -1085,38 +1221,46 @@ class GRU_Vanilla(nn.Module):
 class GRU_SLIMX(nn.Module):
     """
     SLIM GRU cell architecture: update and reset gates only relying on 
-    incoming hidden states. There are three different versions for the SLIM 
-    architecture where the update, and reset gates perform different 
+    incoming hidden states and bias. There are three different versions for the 
+    SLIM architecture where the update, and reset gates perform different 
     calculations:
         SLIM1 - Gates contain hidden states components and bias (Wh + b).
         SLIM2 - Gates contain only weights for hidden states (Wh).
         SLIM3 - Gates contain only learnable bias (b).
     """
     def __init__(self, input_size:int, hidden_size:int, version:int=1) -> None:
+        """Initialise SLIM GRU cell architecture: update and reset gates only 
+        relying on incoming hidden states and bias.
+
+        Args:
+            input_size (int): Number of input features.
+            hidden_size (int): Number of hidden neurons.
+            version (int, optional): SLIM version to use. Defaults to 1.
+        """
 
         super(GRU_SLIMX, self).__init__()
         
-        # Initialize inputs and hidden sizes
+        # Initialise inputs and hidden sizes
         self.input_size = input_size
         self.hidden_size = hidden_size
         self._version = version
 
-        # Initialize activation functions
+        # Initialise activation functions
         self._sigmoid = nn.Sigmoid()
         self._tanh = nn.Tanh()
         
-        # Initialize gate components (weight and bias) for every gate:
+        # Initialise gate components (weight and bias) for every gate:
         for gate in ['update','reset', 'hidden']:
         
             if gate=='hidden':
-                # Initialize gate weights (Wxg) that will process inputs at t.
+                # Initialise gate weights (Wxg) that will process inputs at t.
                 # Gate component computation = Wxg * xt
                 setattr(self,f'gate_{gate}_x',
                     nn.Linear(in_features = self.input_size, 
                             out_features = self.hidden_size, 
                             bias = False))
                 
-                # Initialize gate weights (Whg) that will process hidden states 
+                # Initialise gate weights (Whg) that will process hidden states 
                 # at time t-1, including bias associated to the gate.
                 # Gate component computation = h[t-1]*Whg + bg
                 setattr(self,f'gate_{gate}_h',
@@ -1128,7 +1272,7 @@ class GRU_SLIMX(nn.Module):
         
                 # If SLIM1 or SLIM2, initialize gate weight components.
                 if version<=2:
-                    # Initialize gate components that will process hidden 
+                    # Initialise gate components that will process hidden 
                     # states at time t-1, including bias associated to the gate 
                     # if SLIM1.
                     # Gate component computation = h[t-1]*Whg + <bg>
@@ -1138,14 +1282,33 @@ class GRU_SLIMX(nn.Module):
                                   bias = True if version == 1 else False))
                 else:
                                   
-                    # Initialize gate bias (bg) that will process hidden states 
+                    # Initialise gate bias (bg) that will process hidden states 
                     # at t-1.
                     setattr(self, f'gate_{gate}_h', 
                             Bias(self.hidden_size))
             
 
-    def _forward_gate(self, gate:str, x:torch.TensorFloat, h:torch.TensorFloat, 
-            reset_gate:torch.TensorFloat = None) -> torch.TensorFloat:
+    def _forward_gate(self, gate:str, x:torch.Tensor, h:torch.Tensor, 
+            reset_gate:torch.Tensor = None) -> torch.Tensor:
+        """Forward method to process inputs and states through a specific gate.
+
+        Args:
+            gate (str): Name of the gate upon which the forward operation is 
+            performed.
+            x (torch.Tensor):  Input tensor at time t.
+            h (torch.Tensor): Previous hidden states (at time t-1).
+            reset_gate (torch.Tensor, optional): Tensor with the outputs 
+            from the reset gate. Only required when gate is set to 'cell'. 
+            Defaults to None. 
+
+        Raises:
+            ValueError: Gate is not defined.
+            ValueError: One of the parameters required when cell is set to gate 
+            is not provided.
+
+        Returns:
+            torch.Tensor: Tensor with the output of the gate.
+        """
     
         # Check gate requested is within GRU cell arquitecture.
         if not gate in ['update','reset','hidden']:
@@ -1172,7 +1335,17 @@ class GRU_SLIMX(nn.Module):
             # Apply sigmoid function to gate.
             return self._sigmoid(h)
         
-    def forward(self, x:torch.TensorFloat, h_prev:torch.TensorFloat) -> tuple:
+    def forward(self, x:torch.Tensor, h_prev:torch.Tensor) -> tuple:
+        """Process inputs through the cell.
+
+        Args:
+            x (torch.Tensor): Inputs to process through the cell.
+            h_prev (torch.Tensor): Tensor with the hidden state at time t-1.
+
+        Returns:
+            tuple: Tuple containing two tensors with the hidden state values at 
+            time t.
+        """
             
         # Get outputs from update gate.
         u = self._forward_gate(gate = 'update', x = x, h = h_prev)
@@ -1196,10 +1369,18 @@ class GRU_MUTX(nn.Module):
     associated activation functions.
     """
     def __init__(self, input_size:int, hidden_size:int, version:int=1) -> None:
+        """Initialise Mutation X Gate Recurrent Unit (GRU) cell with update, 
+        reset gates and associated activation functions.
+
+        Args:
+            input_size (int): Number of input features.
+            hidden_size (int): Number of hidden neurons.
+            version (int, optional): Mutation version to use. Defaults to 1.
+        """
 
         super(GRU_MUTX, self).__init__()
         
-        # Initialize inputs and hidden sizes
+        # Initialise inputs and hidden sizes
         self.input_size = input_size
 
         # If number of LSTM layers is 1 and the dropout_probability provided is
@@ -1217,15 +1398,15 @@ class GRU_MUTX(nn.Module):
         # Get the version of the GRU mutation
         self._version = version
 
-        # Initialize activation functions
+        # Initialise activation functions
         self._sigmoid = nn.Sigmoid()
         self._tanh = nn.Tanh()
         
-        # Initialize gate components (weight and bias) for every gate:
+        # Initialise gate components (weight and bias) for every gate:
         for gate in ['update','reset', 'hidden']:
         
             if not (gate=='reset' and version==2):
-                # Initialize gate weights (Wxg) that will process inputs at t.
+                # Initialise gate weights (Wxg) that will process inputs at t.
                 # Gate component computation = Wxg * xt
                 setattr(self,f'gate_{gate}_x',
                     nn.Linear(in_features = self.input_size, 
@@ -1233,7 +1414,7 @@ class GRU_MUTX(nn.Module):
                             bias = True))
             
             if not (gate=='update' and version==1):
-                # Initialize gate weights (Whg) that will process hidden states 
+                # Initialise gate weights (Whg) that will process hidden states 
                 # at time t-1, including bias associated to the gate.
                 # Gate component computation = h[t-1]*Whg + bg
                 setattr(self,f'gate_{gate}_h',
@@ -1241,8 +1422,27 @@ class GRU_MUTX(nn.Module):
                             out_features = self.hidden_size, 
                             bias = True))
             
-    def _forward_gate(self, gate:str, x:torch.TensorFloat, h:torch.TensorFloat, 
-            reset_gate:torch.TensorFloat = None) -> torch.TensorFloat:
+    def _forward_gate(self, gate:str, x:torch.Tensor, h:torch.Tensor, 
+            reset_gate:torch.Tensor = None) -> torch.Tensor:
+        """Forward method to process inputs and states through a specific gate.
+
+        Args:
+            gate (str): Name of the gate upon which the forward operation is 
+            performed.
+            x (torch.Tensor):  Input tensor at time t.
+            h (torch.Tensor): Previous hidden states (at time t-1).
+            reset_gate (torch.Tensor, optional): Tensor with the outputs 
+            from the reset gate. Only required when gate is set to 'cell'. 
+            Defaults to None.
+
+        Raises:
+            ValueError: Gate is not defined.
+            ValueError: One of the parameters required when cell is set to gate 
+            is not provided.
+
+        Returns:
+            torch.Tensor: Tensor with the output of the gate.
+        """
     
         # Check gate requested is within GRU cell arquitecture.
         if not gate in ['update','reset','hidden']:
@@ -1280,7 +1480,17 @@ class GRU_MUTX(nn.Module):
             # Apply sigmoid function to gate.
             return self._sigmoid(x + h)
         
-    def forward(self, x:torch.TensorFloat, h_prev:torch.TensorFloat) -> tuple:
+    def forward(self, x:torch.Tensor, h_prev:torch.Tensor) -> tuple:
+        """Process inputs through the cell.
+
+        Args:
+            x (torch.Tensor): Inputs to process through the cell.
+            h_prev (torch.Tensor): Tensor with the hidden state at time t-1.
+
+        Returns:
+            tuple: Tuple containing two tensors with the hidden state values at 
+            time t.
+        """
 
         # Get outputs from update gate.
         u = self._forward_gate(gate = 'update', x = x, h = h_prev)
@@ -1303,28 +1513,35 @@ class MGU_Vanilla(nn.Module):
     activation functions.
     """
     def __init__(self, input_size:int, hidden_size:int) -> None:
+        """Initialise Vanilla Minimal Gated Unit (MGU) cell with forget gate and 
+        associated activation functions.
+
+        Args:
+            input_size (int): Number of input features.
+            hidden_size (int): Number of hidden neurons.
+        """
 
         super(MGU_Vanilla, self).__init__()
         
-        # Initialize inputs and hidden sizes
+        # Initialise inputs and hidden sizes
         self.input_size = input_size
         self.hidden_size = hidden_size
 
-        # Initialize activation functions
+        # Initialise activation functions
         self._sigmoid = nn.Sigmoid()
         self._tanh = nn.Tanh()
         
-        # Initialize gate components (weight and bias) for every gate:
+        # Initialise gate components (weight and bias) for every gate:
         for gate in ['forget', 'hidden']:
         
-            # Initialize gate weights (Wxg) that will process inputs at time t.
+            # Initialise gate weights (Wxg) that will process inputs at time t.
             # Gate component computation = Wxg * xt
             setattr(self,f'gate_{gate}_x',
                 nn.Linear(in_features = self.input_size, 
                           out_features = self.hidden_size, 
                           bias = False))
             
-            # Initialize gate weights (Whg) that will process hidden states at 
+            # Initialise gate weights (Whg) that will process hidden states at 
             # time t-1, including bias associated to the gate.
             # Gate component computation = h[t-1]*Whg + bg
             setattr(self,f'gate_{gate}_h',
@@ -1333,8 +1550,27 @@ class MGU_Vanilla(nn.Module):
                           bias = True))
             
 
-    def _forward_gate(self, gate:str, x:torch.TensorFloat, h:torch.TensorFloat, 
-            forget_gate:torch.TensorFloat = None) -> torch.TensorFloat:
+    def _forward_gate(self, gate:str, x:torch.Tensor, h:torch.Tensor, 
+            forget_gate:torch.Tensor = None) -> torch.Tensor:
+        """Forward method to process inputs and states through a specific gate.
+
+        Args:
+            gate (str): Name of the gate upon which the forward operation is 
+            performed.
+            x (torch.Tensor):  Input tensor at time t.
+            h (torch.Tensor): Previous hidden states (at time t-1).
+            forget_gate (torch.Tensor, optional): Tensor with the outputs 
+            from the forget gate. Only required when gate is set to 'cell'. 
+            Defaults to None.
+
+        Raises:
+            ValueError: Gate is not defined.
+            ValueError: One of the parameters required when cell is set to gate 
+            is not provided.
+
+        Returns:
+            torch.Tensor: Tensor with the output of the gate.
+        """
     
         # Check gate requested is within GRU cell arquitecture.
         if not gate in ['forget','hidden']:
@@ -1362,7 +1598,17 @@ class MGU_Vanilla(nn.Module):
             # Apply sigmoid function to gate.
             return self._sigmoid(x + h)
         
-    def forward(self, x:torch.TensorFloat, h_prev:torch.TensorFloat) -> tuple:
+    def forward(self, x:torch.Tensor, h_prev:torch.Tensor) -> tuple:
+        """Process inputs through the cell.
+
+        Args:
+            x (torch.Tensor): Inputs to process through the cell.
+            h_prev (torch.Tensor): Tensor with the hidden state at time t-1.
+
+        Returns:
+            tuple: Tuple containing two tensors with the hidden state values at 
+            time t.
+        """
 
         # Get outputs from forget gate.
         f = self._forward_gate(gate = 'forget', x = x, h = h_prev)
@@ -1387,30 +1633,38 @@ class MGU_SLIMX(nn.Module):
         SLIM3 - Gate contain only learnable bias (b).
     """
     def __init__(self, input_size:int, hidden_size:int, version:int=1) -> None:
+        """SLIM MGU cell architecture: forget gate only relying on incoming 
+        hidden states and bias.
+
+        Args:
+            input_size (int): Number of input features.
+            hidden_size (int): Number of hidden neurons.
+            version (int, optional): SLIM version to use. Defaults to 1.
+        """
 
         super(MGU_SLIMX, self).__init__()
         
-        # Initialize inputs and hidden sizes
+        # Initialise inputs and hidden sizes
         self.input_size = input_size
         self.hidden_size = hidden_size
         self._version = version
 
-        # Initialize activation functions
+        # Initialise activation functions
         self._sigmoid = nn.Sigmoid()
         self._tanh = nn.Tanh()
         
-        # Initialize gate components (weight and bias) for every gate:
+        # Initialise gate components (weight and bias) for every gate:
         for gate in ['forget', 'hidden']:
         
             if gate=='hidden':
-                # Initialize gate weights (Wxg) that will process inputs at t.
+                # Initialise gate weights (Wxg) that will process inputs at t.
                 # Gate component computation = Wxg * xt
                 setattr(self,f'gate_{gate}_x',
                     nn.Linear(in_features = self.input_size, 
                             out_features = self.hidden_size, 
                             bias = False))
                 
-                # Initialize gate weights (Whg) that will process hidden states 
+                # Initialise gate weights (Whg) that will process hidden states 
                 # at time t-1, including bias associated to the gate.
                 # Gate component computation = h[t-1]*Whg + bg
                 setattr(self,f'gate_{gate}_h',
@@ -1422,7 +1676,7 @@ class MGU_SLIMX(nn.Module):
         
                 # If SLIM1 or SLIM2, initialize gate weight components.
                 if version<=2:
-                    # Initialize gate components that will process hidden 
+                    # Initialise gate components that will process hidden 
                     # states at time t-1, including bias associated to the gate 
                     # if SLIM1.
                     # Gate component computation = h[t-1]*Whg + <bg>
@@ -1432,14 +1686,33 @@ class MGU_SLIMX(nn.Module):
                                   bias = True if version == 1 else False))
                 else:
                                   
-                    # Initialize gate bias (bg) that will process hidden states 
+                    # Initialise gate bias (bg) that will process hidden states 
                     # at t-1.
                     setattr(self, f'gate_{gate}_h', 
                             Bias(self.hidden_size))
             
 
-    def _forward_gate(self, gate:str, x:torch.TensorFloat, h:torch.TensorFloat, 
-            forget_gate:torch.TensorFloat = None) -> torch.TensorFloat:
+    def _forward_gate(self, gate:str, x:torch.Tensor, h:torch.Tensor, 
+            forget_gate:torch.Tensor = None) -> torch.Tensor:
+        """Forward method to process inputs and states through a specific gate.
+
+        Args:
+            gate (str): Name of the gate upon which the forward operation is 
+            performed.
+            x (torch.Tensor):  Input tensor at time t.
+            h (torch.Tensor): Previous hidden states (at time t-1).
+            forget_gate (torch.Tensor, optional): Tensor with the outputs 
+            from the forget gate. Only required when gate is set to 'cell'. 
+            Defaults to None. 
+
+        Raises:
+            ValueError: Gate is not defined.
+            ValueError: One of the parameters required when cell is set to gate 
+            is not provided.
+
+        Returns:
+            torch.Tensor: Tensor with the output of the gate.
+        """
     
         # Check gate requested is within GRU cell arquitecture.
         if not gate in ['forget','hidden']:
@@ -1466,7 +1739,17 @@ class MGU_SLIMX(nn.Module):
             # Apply sigmoid function to gate.
             return self._sigmoid(h)
         
-    def forward(self, x:torch.TensorFloat, h_prev:torch.TensorFloat) -> tuple:
+    def forward(self, x:torch.Tensor, h_prev:torch.Tensor) -> tuple:
+        """Process inputs through the cell.
+
+        Args:
+            x (torch.Tensor): Inputs to process through the cell.
+            h_prev (torch.Tensor): Tensor with the hidden state at time t-1.
+
+        Returns:
+            tuple: Tuple containing two tensors with the hidden state values at 
+            time t.
+        """
             
         # Get outputs from forget gate.
         f = self._forward_gate(gate = 'forget', x = x, h = h_prev)

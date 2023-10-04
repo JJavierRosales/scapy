@@ -204,40 +204,90 @@ def kelvins_challenge_events(filepath:str, num_events:int = None,
 
 #%% CLASS: Dataset
 class Dataset(TensorDataset):
-  def __init__(self, X, y):
-    self.inputs = X
-    self.outputs = y
+    """Dataset object instanciator from TensorDataset.
 
-    self.input_size = X.size(1)
-    self.output_size = y.size(1)
+    Args:
+        TensorDataset (class): Pytorch TensorDataset loader.
+    """
+    def __init__(self, X:torch.Tensor, y:torch.Tensor) -> None:
+        """Initialise Dataset object.
 
-    self.len = self.inputs.shape[0]
+        Args:
+            X (torch.Tensor): Input data.
+            y (torch.Tensor): Output data (targets).
+        """
+        self.inputs = X
+        self.outputs = y
 
-  def split(self, split_size:float=0.8, shuffle:bool=True, random_state:int=42):
+        self.input_size = X.size(1)
+        self.output_size = y.size(1)
 
-    Xi, Xj, yi, yj = train_test_split(self.inputs, self.outputs, 
-                                      train_size = split_size, 
-                                      random_state = random_state, 
-                                      shuffle = shuffle)
+        self.len = self.inputs.shape[0]
+
+    def split(self, split_size:float=0.8, shuffle:bool=True, 
+              random_state:int=42) -> None:
+        """Split data into two groups.
+
+        Args:
+            split_size (float, optional): Split proportion. Defaults to 0.8.
+            shuffle (bool, optional): Suffle data. Defaults to True.
+            random_state (int, optional): Random state to enable 
+            reproducibility. Defaults to 42.
+        """
+
+        Xi, Xj, yi, yj = train_test_split(self.inputs, self.outputs, 
+                                        train_size = split_size, 
+                                        random_state = random_state, 
+                                        shuffle = shuffle)
+        
+        return Dataset(Xi, yi), Dataset(Xj, yj)
     
-    return Dataset(Xi, yi), Dataset(Xj, yj)
-  
-  def __getitem__(self, index):
-    return self.inputs[index], self.outputs[index]
-  
-  def __len__(self):
-    return self.len
-  
-  def __repr__(self) -> str:
-     description = f'TensorDataset(Inputs: {self.inputs.size(1)} ' + \
-                   f'| Outputs: {self.outputs.size(1)} ' + \
-                   f'| Entries: {len(self.inputs)})'
-     return description
+    def __getitem__(self, index:Union[int, slice]):
+        """Get row from the tensor dataset.
+
+        Args:
+            index (Union[int,slice]): Index(es) to retrieve
+
+        Returns:
+            tuple: Inputs and output values.
+        """
+        return self.inputs[index], self.outputs[index]
+    
+    def __len__(self):
+        """Get number of entries in the tensor dataset.
+        """
+        return self.len
+    
+    def __repr__(self) -> str:
+        """Print information about the object constructor.
+
+        Returns:
+            str: Information of the object.
+        """
+        description = f'TensorDataset(Inputs: {self.inputs.size(1)} ' + \
+                    f'| Outputs: {self.outputs.size(1)} ' + \
+                    f'| Entries: {len(self.inputs)})'
+        return description
 
 #%% CLASS: TensorDatasetFromDataFrame
 class TensorDatasetFromDataFrame():
+    """Tensor Dataset from pandas DataFrame instanciator.
+    """
     def __init__(self, df_input:pd.DataFrame, output_features:list, 
-                 input_features:list, normalize_inputs:bool=True):
+                 input_features:list, normalise_inputs:bool=True):
+        """Initialise Tensor Dataset from pandas DataFrame object.
+
+        Args:
+            df_input (pd.DataFrame): Input pandas DataFrame.
+            output_features (list): List of output features (targets).
+            input_features (list): List of input features.
+            normalise_inputs (bool, optional): Normalise inputs. Defaults to 
+            True.
+
+        Raises:
+            ValueError: Some of the features are not present in the input 
+            DataFrame.
+        """
         
         # Remove empty columns
         df = df_input.copy()
@@ -292,7 +342,7 @@ class TensorDatasetFromDataFrame():
         X_num = torch.nan_to_num(X_num)
 
         # Normalise continuous variables
-        if normalize_inputs:
+        if normalise_inputs:
             bn_nums = nn.BatchNorm1d(len(self.num_features))
             X_num = bn_nums(X_num)
 
@@ -338,17 +388,32 @@ class TensorDatasetFromDataFrame():
         self.output_size = self.data.output_size
 
     def __repr__(self) -> str:
-       description = f'TensorDatasetFromDataFrame(' + \
+        """Print information about the object constructor.
+
+        Returns:
+            str: Information of the object.
+        """
+        description = f'TensorDatasetFromDataFrame(' + \
                      f'Inputs: {self.input_size} ' + \
                      f'| Outputs: {self.output_size} ' + \
                      f'| Entries: {len(self.inputs)})'
-       return description
+        return description
     
-    def __getitem__(self, index):
-      return self.inputs[index], self.outputs[index]
+    def __getitem__(self, index:Union[int,slice]) -> tuple:
+        """Get row from the tensor dataset.
+
+        Args:
+            index (Union[int,slice]): Index(es) to retrieve
+
+        Returns:
+            tuple: Inputs and output values.
+        """
+        return self.inputs[index], self.outputs[index]
     
     def __len__(self):
-      return self.len
+        """Get number of entries in the tensor dataset.
+        """
+        return self.len
 # if __name__ == "__main__":
 
 #     # y_true = np.array([1, 2, 3, 4])

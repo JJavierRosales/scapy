@@ -129,7 +129,20 @@ cdm_features = {
 #%% FUNCTION: get_features
 def get_features(by_cluster:bool=True, only_names:bool = False, 
                  suffix:str=None, include_object_preffix:bool=False, 
-                 **kwfilters):
+                 **kwfilters) -> None:
+    """Get features from the reference cdm_features dictionary.
+
+    Args:
+        by_cluster (bool, optional): Organise by cluster ('header', 
+        'relative metadata', 'metadata', 'data'). Defaults to True.
+        only_names (bool, optional): Return only feature labels. Defaults to 
+        False.
+        suffix (str, optional): Suffix to add to the feature labels. Defaults to 
+        None.
+        include_object_preffix (bool, optional): Add OBJECTID tag to the feature 
+        label. Defaults to False.
+    """
+
 
     if not isinstance(kwfilters, dict): return None
 
@@ -175,7 +188,14 @@ def get_features(by_cluster:bool=True, only_names:bool = False,
 
     return features if only_names else output
 
-def dtype_conversion():
+def dtype_conversion() -> dict:
+    """Get dictionary with the conversion dtypes for pandas DataFrame according 
+    to the CCSDS standards.
+
+    Returns:
+        dict: Dictionary with the mapping column:dtype according to the CCSDS 
+        standards.
+    """
     # Cast columns as correct dtypes
     convert_dict = dict()
 

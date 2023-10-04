@@ -24,7 +24,6 @@ import matplotlib.pyplot as plt
 
 # Import json library and create function to format dictionaries.
 import json
-format_json = lambda x: json.dumps(x, indent=4)
 
 # Get current working directory path for the tool parent folder and print it.
 from pathlib import Path
@@ -32,11 +31,24 @@ import os
 parent_folder = 'scapy'
 cwd = str(Path(os.getcwd()[:os.getcwd().index(parent_folder)+len(parent_folder)]))
 
+
+#%% FUNCTION: format_json
+def format_json(input:dict) -> str:
+    """Convert dictionary to a prettify JSON string.
+
+    Args:
+        input (dict): Dictionary to convert.
+
+    Returns:
+        str: String in JSON format.
+    """
+    return json.dumps(input, indent=4)
 #%% CLASS: FitScipyDistribution
 class FitScipyDistribution:
-
+    """SciPy fitted distribution instanciator.
+    """
     def __init__(self, data:np.ndarray, distribution:st) -> None:
-        """Initialize distribution parameters and information.
+        """Initialise distribution parameters and information.
 
         Args:
             data (np.ndarray): NumPy array with the values to fit.
@@ -131,7 +143,6 @@ class FitScipyDistribution:
         
         return data
 
-        
     def r2_score(self) -> float:
         """Compute coefficient of determination (R2 score)
         """
@@ -646,7 +657,16 @@ def r2_score(y_true:np.array, y_pred:np.array) -> float:
     return 1 - (sse_regr/sse_x_mean)
 
 #%% FUNCTION: binary_auc_roc
-def binary_auc_roc(outputs:torch.Tensor, targets:torch.Tensor):
+def binary_auc_roc(outputs:torch.Tensor, targets:torch.Tensor) -> float:
+    """Compute area under the curve ROC.
+
+    Args:
+        outputs (torch.Tensor): Predicted values.
+        targets (torch.Tensor): Target values
+
+    Returns:
+        float: Area under the curve ROC.
+    """
 
     y_pred = [int(torch.argmax(t)) for t in outputs]
     y_true = [int(torch.argmax(t)) for t in targets]
@@ -659,7 +679,19 @@ def binary_auc_roc(outputs:torch.Tensor, targets:torch.Tensor):
     return aucroc
 #%% FUNCTION: binary_confusion_matrix
 def binary_confusion_matrix(outputs:torch.Tensor, targets:torch.Tensor, 
-                          return_metrics:bool = True):
+                          return_metrics:bool = True) -> dict:
+    """Compute confusion matrix from two classification vectors.
+
+    Args:
+        outputs (torch.Tensor): Predicted categories.
+        targets (torch.Tensor): True categories.
+        return_metrics (bool, optional): Return derived metrics Accuracy, 
+        Precision, Recall and F1-Score. Defaults to True.
+
+    Returns:
+        dict: Confusion matrix results (tp, fp, fn, tn) and classification 
+        metrics when applicable.
+    """
     
     y_true = targets.detach().numpy()
     y_pred = outputs.detach().numpy()
@@ -728,11 +760,24 @@ def pocid(output:torch.Tensor, target:torch.Tensor) -> float:
 
     return float(d/torch.numel(curr_output)*100)
 #%% FUNCTION: get_lr
-def get_lr(optimizer):
+def get_lr(optimizer:torch.nn) -> float:
+    """Get learning rate of optimizer.
+
+    Args:
+        optimizer (torch.nn): Optimizer object.
+
+    Returns:
+        float: Learning rate.
+    """
     for param_group in optimizer.param_groups:
         return param_group['lr']
 #%% FUNCTION: seed
-def seed(seed:int=None):
+def seed(seed:int = None) -> None:
+    """Set the seed in numpy and pytorch for reproducibility.
+
+    Args:
+        seed (int, optional): Seed value. Defaults to None.
+    """
     if seed is None:
         seed = int((time.time()*1e6) % 1e8)
     global _random_seed
@@ -790,8 +835,7 @@ def plt_matrix(num_subplots:int) -> tuple:
             rows += 1
             num_subplots -= cols
             
-        return rows, cols
-        
+        return rows, cols  
 #%% FUNCTION: from_date_str_to_days
 def from_date_str_to_days(date:datetime.datetime, 
                           date0:str='2020-05-22T21:41:31.975', 
@@ -931,7 +975,6 @@ def get_ccsds_time_format(time_string:str) -> str:
     time_format = time_format + frac_str
 
     return time_format
-
 
 #%% FUNCTION: has_nan_or_inf
 def has_nan_or_inf(value: Union[float, torch.TensorFloat]) -> bool:
@@ -1201,11 +1244,11 @@ def df2latex(df: pd.DataFrame, column_format:str='c',
     return table
 
 #%% FUNCTION: number2latex
-def number2latex(value) -> str:
+def number2latex(value:Union[int, float]) -> str:
     """Format a given value depending on its order of magnitude.
 
     Args:
-        value: Value to format as a string.
+        value (Union[int, float]): Value to format as a string.
 
     Returns:
         str: Return value with specific format.
@@ -1455,8 +1498,20 @@ def tabular_list(input:list, n_cols:int = 3, **kwargs) -> str:
     return output
 #%% CLASS: ProgressBar
 class ProgressBar():
-    def __init__(self, iterations:Union[int,list],title:str="", description:str=""):
+    """Progress bar instanciator.
+    """
+    def __init__(self, iterations:Union[int,list],title:str = None, 
+                 description:str = None):
+        """Initialise progress bar instanciator.
 
+        Args:
+            iterations (Union[int,list]): Number of iterations to perform or 
+            list of elements upon which the iterations are taking place.
+            title (str, optional): Title of the progress bar log. Defaults to 
+            None.
+            description (str, optional): Additional comments. Defaults to None.
+        """
+        
         # Define list of sectors and range of values they apply to
         self._sectors_list = list(['', '\u258F', '\u258D', '\u258C', '\u258B', 
                                   '\u258A', '\u2589', '\u2588'])
@@ -1468,9 +1523,9 @@ class ProgressBar():
             self._n_iterations = self.iterations
         else: 
             self._n_iterations = len(self.iterations)
-        self.description = description
+        self.description = description if description is not None else ""
 
-        self._title = ("\n" if title!="" else "") + title
+        self._title = ("\n" if title != None else "") + title
         self._header = None
         self._log = ""
         self._i = 0
@@ -1486,9 +1541,13 @@ class ProgressBar():
         self._its_per_second = 0.0
 
 
-    def get_progress(self):
+    def get_progress(self) -> tuple:
+        """Compute progress (0 to 100) and subprogress (0 to 1).
 
-        # Compute progress (0 to 100) and subprogress (0 to 1)
+        Returns:
+            tuple: Values of the progress and subprogress.
+        """
+
         self._progress = (self._i/self._n_iterations)
         progress = int(((self._i/self._n_iterations)*100//10))
         subprogress = (self._i/self._n_iterations*100 - progress*10)/10
@@ -1497,7 +1556,14 @@ class ProgressBar():
 
     @staticmethod
     def format_time(duration:float) -> str:
+        """Convert miliseconds to time format 'hh:mm:ss'.
 
+        Args:
+            duration (float): Number of miliseconds
+
+        Returns:
+            str: Time as a string.
+        """
         m, s = divmod(duration, 60)
         h, m = divmod(m, 60)
 
@@ -1506,6 +1572,15 @@ class ProgressBar():
     
     def refresh(self, i:int, description:str = None, 
             nested_progress:bool = False) -> None:
+        """Update progress bar information.
+
+        Args:
+            i (int): Iteration number.
+            description (str, optional): Description of the iteration. Defaults 
+            to None.
+            nested_progress (bool, optional): Nested progress: used for nested 
+            loops. Defaults to False.
+        """
 
         # Update description if new description is given
         if description == None:
