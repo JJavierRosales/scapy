@@ -25,7 +25,7 @@ def kelvins_challenge_events(filepath:str, num_events:int = None,
         date_tca:datetime = None, remove_outliers:bool = True,
         drop_features:list = ['c_rcs_estimate', 't_rcs_estimate'], 
         print_log:bool=False) -> CED:
-    """Import Kelvins Challenge dataset as a ConjunctionEventsDataset object.
+    """Import Kelvins Challenge dataset as an events dataset.
 
     Args:
         filepath (str): Path where Kelvins dataset is located.
@@ -210,7 +210,7 @@ class Dataset(TensorDataset):
         TensorDataset (class): Pytorch TensorDataset loader.
     """
     def __init__(self, X:torch.Tensor, y:torch.Tensor) -> None:
-        """Initialise Dataset object.
+        """Initialise Dataset constructor.
 
         Args:
             X (torch.Tensor): Input data.

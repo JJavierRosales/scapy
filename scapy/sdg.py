@@ -21,7 +21,7 @@ class SyntheticDataGenerator():
     def __init__(self, data:np.ndarray, r2_threhold:float = 0.95, 
                  kernel:str = 'gaussian', underfitting_factor:float=3.0,
                  filepath:str = None):
-        """Initialises generator instanciator.
+        """Initialises generator constructor.
 
         Args:
             data (np.ndarray): Array of numerical values to approach.
@@ -178,8 +178,7 @@ class SyntheticDataGenerator():
         
 
     def set_kde(self) -> None:
-        """Setter method to get Probability Density Estimator through Kernel
-        Density estimation method.
+        """Set kernel density estimator and compute PDF.
         """
 
         print(f'\nEstimating optimal bandwidth for {self.kernel.capitalize()} '

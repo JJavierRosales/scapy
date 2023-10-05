@@ -44,7 +44,7 @@ class CosineWarmupScheduler(optim.lr_scheduler._LRScheduler):
         super().__init__(optimizer)
 
     def get_lr(self) -> list:
-        """Recompute new base learning rates using the new learning rate factor.
+        """Get learning rates.
 
         Returns:
             list: New base learning rates list.
@@ -59,7 +59,7 @@ class CosineWarmupScheduler(optim.lr_scheduler._LRScheduler):
         return [base_lr * lr_factor for base_lr in self.base_lrs]
 
     def get_lr_factor(self, epoch:int) -> float:
-        """Get learning rate factor
+        """Get learning rate factor.
 
         Args:
             epoch (int): Epoch of training.
@@ -83,7 +83,7 @@ class CosineWarmupScheduler(optim.lr_scheduler._LRScheduler):
     def plot_lr_factor(warmup_epochs:int, max_epochs:int, 
                        figsize:tuple = (8, 3), figtitle:str = None, 
                        filepath:str = None) -> None:
-        """Plot learning rate factor
+        """Plot learning rate factor.
 
         Args:
             warmup_epochs (int): Number of epochs for warm-up.
@@ -232,8 +232,7 @@ class ConjunctionEventForecaster(nn.Module):
                   plot_lr:bool=False, label:str = None,
                   ax:plt.Axes = None, return_ax:bool = False) -> None:
         
-        """Plot loss in the training set (orange) and validation set (blue) 
-        versus the number of iterations during model training.
+        """Plot training and/or validation loss.
 
         Args:
             filepath (str, optional): Path where the plot is saved. Defaults to 
@@ -623,7 +622,7 @@ class ConjunctionEventForecaster(nn.Module):
     
     def test(self, events_test:CED, test_batch_size:int, 
              num_workers:int = 4) -> dict:
-        """Compute loss on a test set of events using the trained model.
+        """Compute loss on a test set.
 
         Args:
             events_test (ConjunctionEventsDataset): Conjunction Events Dataset
@@ -727,7 +726,7 @@ class ConjunctionEventForecaster(nn.Module):
         return results
 
     def predict(self, event: CE) -> CDM:
-        """Predict next CDM object from a given ConjunctionEvent object.
+        """Predict next CDM object from a given event.
 
         Args:
             event (ConjunctionEvent): Conjunction Event object containing CDM(s) 
@@ -844,8 +843,7 @@ class ConjunctionEventForecaster(nn.Module):
             
     def predict_event(self, event:CE, num_samples:int = 1, 
         max_length:int = None) -> Union[CE, CED]:
-        """Forecast the evolution of a given Conjunction Event by predicting 
-        upcoming Conjunction Data Messages until Time of Closest Approach.
+        """Predict remaining CDMs of a given Conjunction Event.
 
         Args:
             event (ConjunctionEvent): Conjunction Event to forecast.
@@ -916,7 +914,7 @@ class ConjunctionEventForecaster(nn.Module):
             else CED(events = events)
 
     def reset(self, batch_size:int):
-        """Reset hidden state (h) and cell state (c) for all the RNN layers.
+        """Reset hidden and cell states for all the RNN layers.
 
         Args:
             batch_size (int): Batch size.
@@ -945,7 +943,7 @@ class ConjunctionEventForecaster(nn.Module):
                 self.hidden[module_name] = h.squeeze(0)
 
     def forward(self, x:torch.Tensor, x_lengths:torch.IntTensor) -> torch.Tensor:
-        """Predict new CDM containing normalized values.
+        """Predict new CDM containing normalised values.
 
         Args:
             x (torch.FloatTensor): Tensor with shape (n_events, 

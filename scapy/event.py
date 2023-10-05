@@ -29,7 +29,7 @@ class DatasetEventDataset(Dataset):
     """
     def __init__(self, event_set:list, features:list, 
                  features_stats:dict = None) -> None:
-        """Initialises object instanciator
+        """Initialises Dataset constructor.
 
         Args:
             event_set (list): List of Conjunction Events sets.
@@ -145,8 +145,7 @@ class EventsPlotting():
                       return_axs:bool = False, filepath:str = None, 
                       sharex:bool = True, 
                       *args, **kwargs) -> Union[None, np.ndarray]:
-        """Generate a matrix of charts plotting the evolution of all the 
-        features for a single (Event) or multiple events (EventsDataset). 
+        """Plot a evolution of features per event. 
 
         Args:
             features (Union[list, str]): List of features to plot.
@@ -212,8 +211,7 @@ class EventsPlotting():
 
     def plot_uncertainty(self, figsize:tuple = (20, 12), diagonal:bool = False, 
                          *args, **kwargs) -> None:
-        """Plot uncertainty using the covariance matrix terms from the
-         state vector.
+        """Plot uncertainty using the covariance matrix.
 
         Args:
             figsize (tuple, optional): Figure size. Defaults to (20, 12).
@@ -247,8 +245,7 @@ class ConjunctionEvent(EventsPlotting):
         EventsPlotting (class): Common class for Conjunction Events plotting.
     """
     def __init__(self, cdms:list = None, filepaths:list = None) -> None:
-        """Initialise object instanciator. Defaults to empty ConjunctionEvent 
-        (0 CDMs).
+        """Initialise Conjunction Event constructor.
 
         Args:
             cdms (list, optional): List of CDM objects belonging to the event. 
@@ -273,10 +270,7 @@ class ConjunctionEvent(EventsPlotting):
         self._dataframe = None
 
     def _update_cdm_extra_features(self) -> None:
-        """Add features to CDM object relative to the event:
-         - __CREATION_DATE in days since the creation date from the first event.
-         - __TCA estimated days from the creation date of the event to TCA.
-         - __DAYS_TO_TCA estimated remaining days to TCA.
+        """Add non-standard features to CDM object.
         """
         if len(self._cdms) > 0:
 
@@ -356,8 +350,7 @@ class ConjunctionEvent(EventsPlotting):
                      legend:bool = False, xlim:tuple = (-0.5,7.5), 
                      ylims:Union[tuple, dict] = None, 
                      *args, **kwargs) -> Union[None, plt.Axes]:
-        """Plot the evolution of a given feature during the entire duration of 
-        a conjunction event.
+        """Plot the evolution of a given feature until TCA.
 
         Args:
             feature (str): Name of the feature to plot.
@@ -453,7 +446,7 @@ class ConjunctionEvent(EventsPlotting):
         return 'ConjunctionEvent(CDMs: {})'.format(len(self))
 
     def __getitem__(self, index:Union[int, slice]) -> Union[CDM, list]:
-        """Get CDM object from event given an index or list of indexes.
+        """Get CDM object from event given the indeces.
 
         Args:
             index (Union[int, slice]): Index or list of indexes of CDMs to 
@@ -468,7 +461,7 @@ class ConjunctionEvent(EventsPlotting):
             return self._cdms[index]
 
     def __len__(self) -> int:
-        """Get number of events embeded in the conjunction event.
+        """Get number of events in the conjunction event.
 
         Returns:
             int: Number of CDMs in the event.
@@ -484,9 +477,7 @@ class ConjunctionEventsDataset(EventsPlotting):
     """
     def __init__(self, cdms_dir:str = None, cdm_extension:str = '.cdm.kvn.txt',
                  events:list = None) -> None:
-        """Initialises object instanciator importing text files containing CDM 
-        information in KVN format from a given folder or by passing a list of 
-        ConjunctionEvent objects.
+        """Initialise Conjunction Event dataset constructor.
 
         Args:
             cdms_dir (str, optional): Folder directory where all text files 
@@ -642,7 +633,7 @@ class ConjunctionEventsDataset(EventsPlotting):
         return event_dataset
 
     def to_dataframe(self, event_id:bool=False) -> pd.DataFrame:
-        """Convert Conjunction Events dataset to pandas DataFrame
+        """Convert Conjunction Events dataset to pandas DataFrame.
 
         Args:
             event_id (bool): Flag to include an additional column with the 
@@ -682,8 +673,7 @@ class ConjunctionEventsDataset(EventsPlotting):
         return self._dataframe
 
     def dates(self) -> None:
-        """Print summary on datetime information about CDM generation and TCA 
-        using all information contained in the Events dataset. 
+        """Print datetime information about CDM generation. 
         """
 
         # Print header.
@@ -722,7 +712,7 @@ class ConjunctionEventsDataset(EventsPlotting):
 
 
     def common_features(self, only_numeric:bool=False) -> list:
-        """Get list of features contained in the Conjunction Events dataset.
+        """Get list of features in the Conjunction Events dataset.
 
         Args:
             only_numeric (bool, optional): Flag to determine wether only numeric 
@@ -791,7 +781,7 @@ class ConjunctionEventsDataset(EventsPlotting):
 
     def plot_event_lengths(self, figsize:tuple = (7, 3), filepath:str = None, 
         *args, **kwargs) -> None:
-        """Plot histogram with the number of events producing a number n of CDMs.
+        """Plot events histogram (per number of CDMs).
 
         Args:
             figsize (tuple, optional): Figure size. Defaults to (6, 4).
@@ -830,8 +820,7 @@ class ConjunctionEventsDataset(EventsPlotting):
     def plot_feature(self, feature:str, figsize:tuple=(6, 4), 
         ax:plt.Axes = None, return_ax:bool = False, filepath:str = None, 
         *args, **kwargs) -> Union[None, plt.Axes]:
-        """Plot evolution of a given feature throughout all ConjunctionEvents 
-        contained in the dataset.
+        """Plot evolution of a given feature for all events.
 
         Args:
             feature (str): Feature to plot.
@@ -870,8 +859,7 @@ class ConjunctionEventsDataset(EventsPlotting):
         if return_ax: return ax
 
     def filter(self, filter_func) -> ConjunctionEventsDataset:
-        """Filter Conjunction Events using a lambda function applied to the 
-        ConjunctionEvent object.
+        """Filter Conjunction Events using custom function.
 
         Args:
             filter_func (_type_): Function to apply upon ConjunctionEvent. When
@@ -893,7 +881,7 @@ class ConjunctionEventsDataset(EventsPlotting):
 
     def __getitem__(self, index: Union[int, slice]) \
         -> Union[ConjunctionEventsDataset, ConjunctionEvent]:
-        """Redefine magic attribute to get events from a given index or slice.
+        """Redefine magic attribute to get events from a given index.
 
         Args:
             index (Union[int, slice]): Index(es) of ConjunctionEvent objects to 
@@ -909,7 +897,7 @@ class ConjunctionEventsDataset(EventsPlotting):
             return self._events[index]
 
     def __len__(self) -> int:
-        """Get number of Conjunction Events contained in the dataset.
+        """Get number of events contained in the dataset.
 
         Returns:
             int: Number of Conjunction Events.

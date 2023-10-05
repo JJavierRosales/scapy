@@ -130,7 +130,7 @@ cdm_features = {
 def get_features(by_cluster:bool=True, only_names:bool = False, 
                  suffix:str=None, include_object_preffix:bool=False, 
                  **kwfilters) -> None:
-    """Get features from the reference cdm_features dictionary.
+    """Get features from a global CCSDS dictionary.
 
     Args:
         by_cluster (bool, optional): Organise by cluster ('header', 
@@ -189,8 +189,7 @@ def get_features(by_cluster:bool=True, only_names:bool = False,
     return features if only_names else output
 
 def dtype_conversion() -> dict:
-    """Get dictionary with the conversion dtypes for pandas DataFrame according 
-    to the CCSDS standards.
+    """Get dictionary with pandas DataFrame conversion types.
 
     Returns:
         dict: Dictionary with the mapping column:dtype according to the CCSDS 

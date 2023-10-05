@@ -15,8 +15,7 @@ class Bias(nn.Module):
     architectures.
     """
     def __init__(self, input_size:int, bias_value:float = None) -> None:
-        """Initialises learnable bias layer for gates with no weight parameters 
-        in RNN cell architectures.
+        """Initialises bias layer constructor.
 
         Args:
             input_size (int): Number of inputs.
@@ -47,8 +46,7 @@ class LSTM_Vanilla(nn.Module):
     activation functions.
     """
     def __init__(self, input_size:int, hidden_size:int) -> None:
-        """Initialise LSTM cell with input, forget, output and cell gates and 
-        associated activation functions.
+        """Initialise LSTM vanilla cell constructor.
 
         Args:
             input_size (int): Number of input features.
@@ -88,7 +86,7 @@ class LSTM_Vanilla(nn.Module):
             input_gate:torch.Tensor = None,
             forget_gate:torch.Tensor = None,
             c_prev:torch.Tensor = None) -> torch.Tensor:
-        """Forward method to process inputs and states through a specific gate.
+        """Process inputs through a specific gate.
 
         Args:
             gate (str): Name of the gate upon which the forward operation is 
@@ -163,7 +161,6 @@ class LSTM_Vanilla(nn.Module):
         # Get hidden states from t-1.
         h_prev, c_prev = hidden_states
         
-        
         # Get outputs from input gate (to know what to learn).
         i = self._forward_gate(gate = 'input', x = x, h = h_prev)
         
@@ -195,7 +192,7 @@ class LSTM_SLIMX(nn.Module):
         SLIM3 - Gates contain only learnable bias (b).
     """
     def __init__(self, input_size:int, hidden_size:int, version:int = 1) -> None:
-        """Initialise LSTM SLIM cell object.
+        """Initialise LSTM SLIM cell constructor.
 
         Args:
             input_size (int): Number of input features.
@@ -264,7 +261,7 @@ class LSTM_SLIMX(nn.Module):
             input_gate:torch.Tensor = None,
             forget_gate:torch.Tensor = None,
             c_prev:torch.Tensor = None) -> torch.Tensor:
-        """Forward method to process inputs and states through a specific gate.
+        """Process inputs through a specific gate.
 
         Args:
             gate (str): Name of the gate upon which the forward operation is 
@@ -366,8 +363,7 @@ class LSTM_NXG(nn.Module):
     LSTM cell with either the input, forget, or output gates cancelled out.
     """
     def __init__(self, input_size:int, hidden_size:int, drop_gate:str) -> None:
-        """Initilalises LSTM cell with either the input, forget, or output gates 
-        cancelled out.
+        """Initilalises LSTM NXG cell constructor.
 
         Args:
             input_size (int): Number of input features.
@@ -421,7 +417,7 @@ class LSTM_NXG(nn.Module):
             input_gate:torch.Tensor = None,
             forget_gate:torch.Tensor = None,
             c_prev:torch.Tensor = None) -> torch.Tensor:
-        """Forward method to process inputs and states through a specific gate.
+        """Process inputs through a specific gate.
 
         Args:
             gate (str): Cell gate.
@@ -520,8 +516,7 @@ class LSTM_NXGAF(nn.Module):
     outputs or cell gates.
     """
     def __init__(self, input_size:int, hidden_size:int, naf_gate:str) -> None:
-        """Initialise LSTM cell with the no activation function in either the 
-        inputs, forget or outputs gates.
+        """Initialise LSTM NXGAF cell constructor.
 
         Args:
             input_size (int): Number of input features.
@@ -563,7 +558,7 @@ class LSTM_NXGAF(nn.Module):
             input_gate:torch.Tensor = None,
             forget_gate:torch.Tensor = None,
             c_prev:torch.Tensor = None) -> torch.Tensor:
-        """Forward method to process inputs and states through a specific gate.
+        """Process inputs through a specific gate.
 
         Args:
             gate (str): Cell gate.
@@ -660,8 +655,7 @@ class LSTM_FB1(nn.Module):
     associated activation functions.
     """
     def __init__(self, input_size:int, hidden_size:int) -> None:
-        """Initialise LSTM with Forget Bias=1 cell with input, forget, output 
-        and cell gates and associated activation functions.
+        """Initialise LSTM FB1 cell constructor.
 
         Args:
             input_size (int): Number of input features.
@@ -704,7 +698,7 @@ class LSTM_FB1(nn.Module):
             input_gate:torch.Tensor = None,
             forget_gate:torch.Tensor = None,
             c_prev:torch.Tensor = None) -> torch.Tensor:
-        """Forward method to process inputs and states through a specific gate.
+        """Process inputs through a specific gate.
 
         Args:
             gate (str): Name of the gate upon which the forward operation is 
@@ -808,8 +802,7 @@ class LSTM_CIFG(nn.Module):
     gates and associated activation functions.
     """
     def __init__(self, input_size:int, hidden_size:int) -> None:
-        """Initialise coupled Input Forget Gate LSTM cell with input, forget, 
-        output and cell gates and associated activation functions.
+        """Initialise LSTM CIFG cell constructor.
 
         Args:
             input_size (int): Number of input features.
@@ -848,7 +841,7 @@ class LSTM_CIFG(nn.Module):
     def _forward_gate(self, gate:str, x:torch.Tensor, h:torch.Tensor, 
             input_gate:torch.Tensor = None,
             c_prev:torch.Tensor = None) -> torch.Tensor:
-        """Forward method to process inputs and states through a specific gate.
+        """Process inputs through a specific gate.
 
         Args:
             gate (str): Name of the gate upon which the forward operation is 
@@ -946,8 +939,7 @@ class LSTM_PC(nn.Module):
     associated activation functions.
     """
     def __init__(self, input_size:int, hidden_size:int) -> None:
-        """Initialise Peephole Connections LSTM cell with input, forget, output 
-        and cell gates and associated activation functions.
+        """Initialise LSTM PC cell constructor.
 
         Args:
             input_size (int): Number of input features.
@@ -999,7 +991,7 @@ class LSTM_PC(nn.Module):
             input_gate:torch.Tensor = None,
             forget_gate:torch.Tensor = None,
             c_prev:torch.Tensor = None) -> torch.Tensor:
-        """Forward method to process inputs and states through a specific gate.
+        """Process inputs through a specific gate.
 
         Args:
             gate (str): Name of the gate upon which the forward operation is 
@@ -1104,8 +1096,7 @@ class GRU_Vanilla(nn.Module):
     associated activation functions.
     """
     def __init__(self, input_size:int, hidden_size:int) -> None:
-        """Initialise Vanilla Gate Recurrent Unit (GRU) cell with update, reset 
-        gates and associated activation functions.
+        """Initialise GRU Vanilla cell constructor.
 
         Args:
             input_size (int): Number of input features.
@@ -1143,7 +1134,7 @@ class GRU_Vanilla(nn.Module):
 
     def _forward_gate(self, gate:str, x:torch.Tensor, h:torch.Tensor, 
             reset_gate:torch.Tensor = None) -> torch.Tensor:
-        """Forward method to process inputs and states through a specific gate.
+        """Process inputs through a specific gate.
 
         Args:
             gate (str): Name of the gate upon which the forward operation is 
@@ -1229,8 +1220,7 @@ class GRU_SLIMX(nn.Module):
         SLIM3 - Gates contain only learnable bias (b).
     """
     def __init__(self, input_size:int, hidden_size:int, version:int=1) -> None:
-        """Initialise SLIM GRU cell architecture: update and reset gates only 
-        relying on incoming hidden states and bias.
+        """Initialise GRU SLIMX cell constructor.
 
         Args:
             input_size (int): Number of input features.
@@ -1290,7 +1280,7 @@ class GRU_SLIMX(nn.Module):
 
     def _forward_gate(self, gate:str, x:torch.Tensor, h:torch.Tensor, 
             reset_gate:torch.Tensor = None) -> torch.Tensor:
-        """Forward method to process inputs and states through a specific gate.
+        """Process inputs through a specific gate.
 
         Args:
             gate (str): Name of the gate upon which the forward operation is 
@@ -1369,8 +1359,7 @@ class GRU_MUTX(nn.Module):
     associated activation functions.
     """
     def __init__(self, input_size:int, hidden_size:int, version:int=1) -> None:
-        """Initialise Mutation X Gate Recurrent Unit (GRU) cell with update, 
-        reset gates and associated activation functions.
+        """Initialise GRU MUTX cell constructor.
 
         Args:
             input_size (int): Number of input features.
@@ -1424,7 +1413,7 @@ class GRU_MUTX(nn.Module):
             
     def _forward_gate(self, gate:str, x:torch.Tensor, h:torch.Tensor, 
             reset_gate:torch.Tensor = None) -> torch.Tensor:
-        """Forward method to process inputs and states through a specific gate.
+        """Process inputs through a specific gate.
 
         Args:
             gate (str): Name of the gate upon which the forward operation is 
@@ -1513,8 +1502,7 @@ class MGU_Vanilla(nn.Module):
     activation functions.
     """
     def __init__(self, input_size:int, hidden_size:int) -> None:
-        """Initialise Vanilla Minimal Gated Unit (MGU) cell with forget gate and 
-        associated activation functions.
+        """Initialise MGU Vanilla cell constructor.
 
         Args:
             input_size (int): Number of input features.
@@ -1552,7 +1540,7 @@ class MGU_Vanilla(nn.Module):
 
     def _forward_gate(self, gate:str, x:torch.Tensor, h:torch.Tensor, 
             forget_gate:torch.Tensor = None) -> torch.Tensor:
-        """Forward method to process inputs and states through a specific gate.
+        """Process inputs through a specific gate.
 
         Args:
             gate (str): Name of the gate upon which the forward operation is 
@@ -1633,8 +1621,7 @@ class MGU_SLIMX(nn.Module):
         SLIM3 - Gate contain only learnable bias (b).
     """
     def __init__(self, input_size:int, hidden_size:int, version:int=1) -> None:
-        """SLIM MGU cell architecture: forget gate only relying on incoming 
-        hidden states and bias.
+        """Initialise MGU SLIMX cell constructor.
 
         Args:
             input_size (int): Number of input features.
@@ -1694,7 +1681,7 @@ class MGU_SLIMX(nn.Module):
 
     def _forward_gate(self, gate:str, x:torch.Tensor, h:torch.Tensor, 
             forget_gate:torch.Tensor = None) -> torch.Tensor:
-        """Forward method to process inputs and states through a specific gate.
+        """Process inputs through a specific gate.
 
         Args:
             gate (str): Name of the gate upon which the forward operation is 

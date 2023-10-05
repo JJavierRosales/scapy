@@ -46,14 +46,14 @@ import warnings
 # accurate forecasts by considering the relevant information across the 
 # entire sequence.
 class SelfAttentionLayer(nn.Module):
-    """Self-Attention layer instanciator
+    """Self-Attention layer instanciator.
 
     Args:
         nn (torch.nn): Pytorch base module for any neural network development.
     """
     def __init__(self, input_size:int, batch_first:bool=True, 
                  num_heads:int=1) -> None:
-        """Initialise self-attention layer object.
+        """Initialise self-attention layer constructor.
 
         Args:
             input_size (int): Number of inputs to the layer.
@@ -93,7 +93,7 @@ class RNNLayer(nn.Module):
     """
 
     def __init__(self, cell, input_size:int, hidden_size:int, **cell_args:dict):
-        """Initialize RNN layer base.
+        """Initialize RNN layer constructor.
 
         Args:
             cell (constructor): RNN cell constructor.
@@ -119,7 +119,7 @@ class RNNLayer(nn.Module):
         
 
     def forward(self, input: torch.Tensor, state:Union[tuple,torch.Tensor]) -> tuple:
-        """Forward operation through all time steps of a given input.
+        """Process inputs through all layers.
 
         Args:
             input (torch.Tensor): Tensor containing the values at every 
@@ -166,7 +166,7 @@ class LSTM(nn.Module):
     def __init__(self, input_size:int, hidden_size:int, cell, 
         batch_first:bool=True, num_layers:int=1, 
         dropout:float=0.0, **cell_args:dict) -> None:
-        """Initialize adapted LSTM class.
+        """Initialize LSTM custom layer constructor.
 
         Args:
             input_size (int): Number of input features.
@@ -223,8 +223,7 @@ class LSTM(nn.Module):
 
 
     def forward(self, input: torch.Tensor, states: torch.Tensor) -> tuple:
-        """Forward operation through all time steps of a given input and all 
-        LSTM layers.
+        """Process inputs through the layer.
 
         Args:
             input (torch.Tensor): Tensor of shape (seq_length, hidden_size) 
@@ -378,7 +377,7 @@ class GU(nn.Module):
     def __init__(self, input_size:int, hidden_size:int, cell, 
         batch_first:bool=True, num_layers:int=1, 
         dropout:float=0.0, **cell_args:dict) -> None:
-        """Initialize adapted GU class.
+        """Initialise custom constructor for GRU and MGU cells.
 
         Args:
             input_size (int): Number of input features.
@@ -435,8 +434,7 @@ class GU(nn.Module):
 
 
     def forward(self, input: torch.Tensor, states: torch.Tensor) -> tuple:
-        """Forward operation through all time steps of a given input and all 
-        GRU layers.
+        """Process inputs through the layer.
 
         Args:
             input (torch.Tensor): Tensor of shape (seq_length, hidden_size) 

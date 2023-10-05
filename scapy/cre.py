@@ -31,7 +31,7 @@ class CollisionRiskEvaluator(nn.Module):
                  dropout_probs:Union[float, list] = 0.2, 
                  classification:bool=False, 
                  class_weights:torch.Tensor = torch.tensor([0.5, 0.5])):
-        """Initialises the model instanciator.
+        """Initialise model constructor.
 
         Args:
             input_size (int): Number of input features.
@@ -127,8 +127,7 @@ class CollisionRiskEvaluator(nn.Module):
                   log_scale:bool = False, validation_only:bool=False, 
                   plot_lr:bool=False, label:str = None,
                   ax:plt.Axes = None, return_ax:bool = False) -> None:
-        """Plot loss in the training set (orange) and validation set (blue) 
-        versus the number of iterations during model training.
+        """Plot training and/or validation loss.
 
         Args:
             filepath (str, optional): Path where the plot is saved. Defaults to 
@@ -569,8 +568,7 @@ class CollisionRiskEvaluator(nn.Module):
         return results
 
     def forward(self, x:torch.Tensor) -> torch.Tensor:
-        """Produce risk evaluation: conunction classification or collision risk 
-        probability estimation.
+        """Compute risk evaluation.
 
         Args:
             x (torch.FloatTensor): Tensor with shape (batch_size, features) 

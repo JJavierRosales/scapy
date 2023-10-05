@@ -244,8 +244,7 @@ class ConjunctionDataMessage():
             f.write(content)
 
     def __hash__(self) -> int:
-        """Return a hashed integer value of the object we pass as a parameter 
-        into it.
+        """Return a hashed integer value of the object.
 
         Returns:
             int: Hash of the CDM in KVN format.
@@ -253,8 +252,7 @@ class ConjunctionDataMessage():
         return hash(self.kvn(show_all=True))
 
     def __eq__(self, other: ConjunctionDataMessage) -> bool:
-        """Check if CDM object is exactly the same as other passed as a 
-        parameter.
+        """Check if CDM object is exactly the same as another.
 
         Args:
             other (ConjunctionDataMessage): CDM object to check vs self.
@@ -391,7 +389,7 @@ class ConjunctionDataMessage():
         self._update_miss_distance()
 
     def _update_miss_distance(self) -> None:
-        """Update miss distance when the state vector of an object is updated.
+        """Update miss distance.
         """
         state_object1 = self.get_state(0)
         if np.isnan(state_object1.sum()):
@@ -404,7 +402,7 @@ class ConjunctionDataMessage():
         self.set_relative_metadata('MISS_DISTANCE', miss_distance)
 
     def _update_state_relative(self) -> None:
-        """Update relative state vector when an object state vector is updated.
+        """Update relative state vector.
         """
         def uvw_matrix(r:np.ndarray, v:np.ndarray) -> np.ndarray:
             """Get reference frame from position and velocity vectors.
@@ -426,7 +424,7 @@ class ConjunctionDataMessage():
         def relative_state(state_obj_1:np.ndarray, 
                            state_obj_2:np.ndarray) -> np.ndarray:
             """Takes states in ITRF and returns relative state in RTN with 
-            target as reference
+            target as reference.
 
             Args:
                 state_obj_1 (np.ndarray): State vectors for OBJECT1.
@@ -474,7 +472,7 @@ class ConjunctionDataMessage():
                                    np.linalg.norm(relative_state[1]))
 
     def get_state_relative(self) -> np.ndarray:
-        """Get relative state vector between OBJECT1 and OBJECT2.
+        """Get relative state vector.
 
         Returns:
             np.ndarray: Relative state vector.
@@ -512,7 +510,7 @@ class ConjunctionDataMessage():
         return state_vector
 
     def get_covariance(self, object_id:int) -> np.ndarray:
-        """Get covariance matrix
+        """Get covariance matrix.
 
         Args:
             object_id (int): ID of the object (1 or 2).
@@ -679,7 +677,7 @@ class ConjunctionDataMessage():
         return self.kvn()
 
     def __getitem__(self, key:str) -> str:
-        """Get data from a given feature of the CDM
+        """Get data from a given feature of the CDM.
 
         Args:
             key (str): Feature to retrieve.

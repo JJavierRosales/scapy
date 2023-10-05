@@ -48,7 +48,7 @@ class FitScipyDistribution:
     """SciPy fitted distribution instanciator.
     """
     def __init__(self, data:np.ndarray, distribution:st) -> None:
-        """Initialise distribution parameters and information.
+        """Initialise fitter distribution constructor.
 
         Args:
             data (np.ndarray): NumPy array with the values to fit.
@@ -101,8 +101,7 @@ class FitScipyDistribution:
         self.processing_time = toc-tic
         
     def rvs(self, size:int=1000, random_state:int=1, **kwargs) -> np.ndarray:
-        """Generate data distribution from stats function. Random Variates of 
-        given Size.
+        """Generate data distribution from function.
 
         Args:
             size (int, optional): Size of NumPy array to generate. Defaults to 
@@ -144,7 +143,7 @@ class FitScipyDistribution:
         return data
 
     def r2_score(self) -> float:
-        """Compute coefficient of determination (R2 score)
+        """Compute coefficient of determination (R2 score).
         """
         
         if self.params == None: return 0
@@ -180,7 +179,7 @@ class FitScipyDistribution:
         return r2
     
     def pdf(self, size:int=10000) -> pd.Series:
-        """Generate distributions's Probability Distribution Function (PDF).
+        """Generate Probability Distribution Function (PDF).
 
         Args:
             size (int, optional): Size of the array resulting from the PDF. 
@@ -215,8 +214,7 @@ def find_best_distribution(data: np.ndarray,
                            stdists_exc:list = ['studentized_range', 
                                                'levy_l_gen', 
                                                'levy_stable']) -> tuple:
-    """Find best fitted distribution (higher R2 score vs actual probability 
-    density).
+    """Find best fitted distribution.
 
     Args:
         data (np.ndarray): Array upon which find the best SciPy distribution.
@@ -334,8 +332,7 @@ def bws_msecv(data: np.ndarray, kernel:str='gaussian', bins_rule:str='fd',
               conv_accuracy:float = 1e-5, n_batches_min:int = 2, 
               n_batches_max:int = 10, underfitting_factor:float=2, 
               print_log:bool = False) -> tuple:
-    """Computes optimal bandwidth minimizing MSE actual vs estimated density 
-    through cross-validation.
+    """Compute optimal bandwidth using MSE cross-validation.
 
     Args:
         data (np.ndarray): Array containing all input data.
@@ -515,7 +512,7 @@ def bws_msecv(data: np.ndarray, kernel:str='gaussian', bins_rule:str='fd',
 def plot_histogram(data:np.ndarray, features:list, figsize:tuple = (6, 3), 
                    return_ax:bool=False, bins:int=40, show_stats:bool = False, 
                    show:bool=True, **kwargs):
-    """Plot custom histogram for dataframe features. 
+    """Plot histogram. 
 
     Args:
         data (np.ndarray): Array of data to plot.
@@ -627,7 +624,7 @@ def plot_histogram(data:np.ndarray, features:list, figsize:tuple = (6, 3),
 
 #%% FUNCTION: sse
 def sse(y_true:np.array, y_pred:np.array) -> float:
-    """Compute Sum of Squared Errors (SSE).
+    """Compute Sum of Squared Errors.
 
     Args:
         y_true (np.array): Array with true values.
@@ -680,7 +677,7 @@ def binary_auc_roc(outputs:torch.Tensor, targets:torch.Tensor) -> float:
 #%% FUNCTION: binary_confusion_matrix
 def binary_confusion_matrix(outputs:torch.Tensor, targets:torch.Tensor, 
                           return_metrics:bool = True) -> dict:
-    """Compute confusion matrix from two classification vectors.
+    """Compute confusion matrix.
 
     Args:
         outputs (torch.Tensor): Predicted categories.
@@ -717,7 +714,7 @@ def binary_confusion_matrix(outputs:torch.Tensor, targets:torch.Tensor,
 #%% FUNCTION: mape
 def mape(output:torch.Tensor, target:torch.Tensor, 
                 epsilon:float=1e-8) -> torch.Tensor:
-    """Mean Absolute Percentage Error (MAPE)
+    """Compute Mean Absolute Percentage Error.
 
     Args:
         output (torch.Tensor): Predicted values.
@@ -733,7 +730,7 @@ def mape(output:torch.Tensor, target:torch.Tensor,
                                 torch.add(target, epsilon))*100))
 #%% FUNCTION: pocid
 def pocid(output:torch.Tensor, target:torch.Tensor) -> float:
-    """Prediction Of Change In Direction (POCID)
+    """Compute Prediction Of Change In Direction.
 
     Args:
         output (torch.Tensor): Predicted value.
@@ -761,7 +758,7 @@ def pocid(output:torch.Tensor, target:torch.Tensor) -> float:
     return float(d/torch.numel(curr_output)*100)
 #%% FUNCTION: get_lr
 def get_lr(optimizer:torch.nn) -> float:
-    """Get learning rate of optimizer.
+    """Get learning rate from optimizer.
 
     Args:
         optimizer (torch.nn): Optimizer object.
@@ -773,7 +770,7 @@ def get_lr(optimizer:torch.nn) -> float:
         return param_group['lr']
 #%% FUNCTION: seed
 def seed(seed:int = None) -> None:
-    """Set the seed in numpy and pytorch for reproducibility.
+    """Set the seed for reproducibility.
 
     Args:
         seed (int, optional): Seed value. Defaults to None.
@@ -789,7 +786,7 @@ def seed(seed:int = None) -> None:
 
 #%% FUNCTION: docstring
 def docstring(item, internal_attr:bool=False, builtin_attr:bool=False) -> None:
-    """Print DocString from a specific Module, Class, or Function.
+    """Print DocString from an attribute.
 
     Args:
         item (_type_): Module, Class, or Function to print documentation from. 
@@ -817,8 +814,7 @@ def docstring(item, internal_attr:bool=False, builtin_attr:bool=False) -> None:
             .format(method,getattr(item, method).__doc__, "_"*80))
 #%% FUNCTION: plt_matrix
 def plt_matrix(num_subplots:int) -> tuple:
-    """Calculate number of rows and columns for a square matrix 
-    containing subplots.
+    """Calculate number of rows and columns for subplots.
 
     Args:
         num_subplots (int): Number of subplots contained in the matrix.
@@ -865,7 +861,7 @@ def from_date_str_to_days(date:datetime.datetime,
     return days + days_fraction
 #%% FUNCTION: doy_2_date
 def doy_2_date(value:str, doy:str, year:int, idx:int) -> str:
-    """Converts Day of Year (DOY) date format to date format.
+    """Converts Day of Year date format to date format.
 
     Args:
         value (str): Original date time string with day of year format 
@@ -896,21 +892,7 @@ def doy_2_date(value:str, doy:str, year:int, idx:int) -> str:
     return value
 #%% FUNCTION: get_ccsds_time_format
 def get_ccsds_time_format(time_string:str) -> str:
-    """Get the format of the datetime string in the CDM. The CCSDS time format 
-    is required to be of the general form yyyy-[mm-dd|ddd]THH:MM:SS[.F*][Z]. The
-    following considerations are taken into account:
-
-    (1) The date and time fields are separated by a "T".
-    (2) The date field has a four digit year followed by either a two digit 
-        month and two digit day, or a three digit day-of-year.  
-    (3) The year, month, day, and day-of-year fields are separated by a dash.
-    (4) The hours, minutes and seconds fields are each two digits separated 
-        by colons.
-    (5) The fraction of seconds is optional and can have any number of
-        digits.
-    (6) If a fraction of seconds is provided, it is separated from the two
-        digit seconds by a period.
-    (7) The time string can end with an optional "Z" time zone indicator
+    """Get the format of the datetime string. 
 
     Args:
         time_string (str): Original time string stored in CDM. It must be of the 
@@ -925,6 +907,21 @@ def get_ccsds_time_format(time_string:str) -> str:
     Returns:
         str: Outputs the format of the time string. 
     """
+
+    # The CCSDS time format is required to be of the general form 
+    # yyyy-[mm-dd|ddd]THH:MM:SS[.F*][Z]. The following considerations are taken 
+    # into account:
+    # (1) The date and time fields are separated by a "T".
+    # (2) The date field has a four digit year followed by either a two digit 
+    #     month and two digit day, or a three digit day-of-year.  
+    # (3) The year, month, day, and day-of-year fields are separated by a dash.
+    # (4) The hours, minutes and seconds fields are each two digits separated 
+    #     by colons.
+    # (5) The fraction of seconds is optional and can have any number of
+    #     digits.
+    # (6) If a fraction of seconds is provided, it is separated from the two
+    #     digit seconds by a period.
+    # (7) The time string can end with an optional "Z" time zone indicator
 
     # Count number of T separators.
     numT = time_string.count('T')
@@ -978,7 +975,7 @@ def get_ccsds_time_format(time_string:str) -> str:
 
 #%% FUNCTION: has_nan_or_inf
 def has_nan_or_inf(value: Union[float, torch.TensorFloat]) -> bool:
-    """Check if value(s) contain any infinite or Not a Number (NaN).
+    """Check if value(s) contain any infinite or NaN.
 
     Args:
         value (Union[float, torch.TensorFloat]): Value(s) to check.
@@ -997,8 +994,7 @@ def has_nan_or_inf(value: Union[float, torch.TensorFloat]) -> bool:
         return math.isnan(value) or math.isinf(value)
 #%% FUNCTION: tile_rows_cols
 def tile_rows_cols(num_items:int) -> tuple:
-    """Get number of rows and columns a series of items can be organised to 
-    follow a square shaped frame.
+    """Get number of rows and columns for a square shaped frame.
 
     Args:
         num_items (int): Number of items to tile.
@@ -1034,7 +1030,7 @@ def add_days_to_date_str(date0:datetime, days:float) -> str:
     return date.strftime('%Y-%m-%dT%H:%M:%S.%f')
 #%% FUNCTION: transform_date_str
 def transform_date_str(date_string:str, from_format:str, to_format:str) -> str:
-    """Convert date in string format from certain format to another format.
+    """Convert date in string format another format.
 
     Args:
         date_string (str): Date as string type to change the format.
@@ -1049,7 +1045,7 @@ def transform_date_str(date_string:str, from_format:str, to_format:str) -> str:
     return date.strftime(to_format)
 #%% FUNCTION: is_date
 def is_date(date_string:str, date_format:str) -> bool:
-    """Check a date in string format is an actual date.
+    """Check if string is an actual date.
 
     Args:
         date_string (str): Date in string format to check.
@@ -1157,7 +1153,7 @@ def nbins(data:np.ndarray, rule:str = 'fd') -> dict:
     return {'n': n_bins, 'width': bins_width[rule], 'range': bins_range}
 #%% FUNCTION: om
 def om(value: float) -> int:
-    """Get order of magnitude of value.
+    """Get order of magnitude.
 
     Args:
         value (float): Value to get the order of magnitude from.
@@ -1175,7 +1171,7 @@ def om(value: float) -> int:
     return int(math.floor(math.log(abs(value), 10)))
 #%% FUNCTION: round_by_om
 def round_by_om(value:float, abs_method:str='ceil', **kwargs) -> float:
-    """Round up/down float by specifying rounding of magnitude.
+    """Round up/down by order of magnitude.
 
     Args:
         value (float): Value to round up/down.
@@ -1245,7 +1241,7 @@ def df2latex(df: pd.DataFrame, column_format:str='c',
 
 #%% FUNCTION: number2latex
 def number2latex(value:Union[int, float]) -> str:
-    """Format a given value depending on its order of magnitude.
+    """Format number depending on its order of magnitude.
 
     Args:
         value (Union[int, float]): Value to format as a string.
@@ -1279,7 +1275,7 @@ def number2latex(value:Union[int, float]) -> str:
 #%% FUNCTION: outliers_boundaries
 def outliers_boundaries(data: np.ndarray, threshold: Union[tuple, float]=1.5, 
         positive_only:bool=False) -> Union[tuple, np.ndarray, np.ndarray]:
-    """Compute limits of standard data within a given data distribution.
+    """Compute limits of standard data.
 
     Args:
         data (np.ndarray): Data to get the outliers boundaries from.
@@ -1316,7 +1312,7 @@ def outliers_boundaries(data: np.ndarray, threshold: Union[tuple, float]=1.5,
     return std_lims, std_data, outliers
 #%% FUNCTION: compute_vif
 def compute_vif(df_input: pd.DataFrame) -> pd.DataFrame:
-    """Compute Variance Inflation Factor to evaluate multicolinearity.
+    """Compute Variance Inflation Factor.
 
     Args:
         df_input (pd.DataFrame): Input dataframe to compute VIF.
@@ -1361,7 +1357,7 @@ def compute_vif(df_input: pd.DataFrame) -> pd.DataFrame:
     return result
 #%% FUNCTION: vif_selection
 def vif_selection(df_input:pd.DataFrame, maxvif:float=5.0) -> dict:
-    """Variable selection using Variance Inflation Factor (VIF) threshold.
+    """Feature selection using VIF threshold.
 
     Args:
         df_input (pd.DataFrame): Input dataframe.
@@ -1431,7 +1427,7 @@ def vif_selection(df_input:pd.DataFrame, maxvif:float=5.0) -> dict:
     return output
 #%% FUNCTION: tabular_list
 def tabular_list(input:list, n_cols:int = 3, **kwargs) -> str:
-    """Format list as a tabular table in string format.
+    """Format list as a string tabular table.
 
     Args:
         input_list (list): List of items to format.
@@ -1502,7 +1498,7 @@ class ProgressBar():
     """
     def __init__(self, iterations:Union[int,list],title:str = None, 
                  description:str = None):
-        """Initialise progress bar instanciator.
+        """Initialise progress bar constructor.
 
         Args:
             iterations (Union[int,list]): Number of iterations to perform or 
