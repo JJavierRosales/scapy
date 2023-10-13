@@ -11,6 +11,9 @@ import warnings
 import time
 import scipy.stats as st
 from typing import Union
+import requests
+import zipfile
+from io import BytesIO
 
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import roc_auc_score
@@ -28,10 +31,93 @@ import json
 # Get current working directory path for the tool parent folder and print it.
 from pathlib import Path
 import os
-parent_folder = 'scapy'
-cwd = str(Path(os.getcwd()[:os.getcwd().index(parent_folder)+len(parent_folder)]))
+foldername = 'scapy'
+cwd = str(Path(os.getcwd()[:os.getcwd().index(foldername)+len(foldername)]))
 
 
+#%% FUNCTION: mkdirtree
+def mkdirtree(path:str) -> None:
+    """Create folder using a reference path.
+
+    Args:
+        path (str): Reference path to create.
+    """
+
+    # Get all subfolders required 
+    subfolders = path.split('\\')
+
+    for f, folder in enumerate(subfolders):
+        
+        folderpath = '\\'.join(subfolders[:f+1])
+        if not os.path.exists(folderpath) and not os.path.isfile(folderpath): 
+            os.mkdir(folderpath)
+
+#%% FUNCTION: download_kelvins_data
+def download_kelvins_data(data:str, folderpath:str = None, overwrite:bool = False, return_filepath:bool = False) -> Union[None, str]:
+    """_summary_
+
+    Args:
+        data (str): Type of data to download: 'train' or 'test'.
+        folderpath (str, optional): Folder where the CSV files are saved. 
+        Defaults to None.
+        overwrite (bool, optional): Overwrite file if it already exists. 
+        Defaults to False.
+        return_filepath (bool, optional): Return filepath. Defaults to False.
+
+    Raises:
+        RuntimeError: Download failed.
+
+    Returns:
+        Union[None, str]: Filepath if return_filepath is True, None otherwise.
+    """
+
+    if folderpath is None: 
+        folderpath = os.path.join(cwd,'data','esa-challenge')
+
+    url_preffix = "https://kelvins.esa.int/media/public/" + \
+                  "competitions/collision-avoidance-challenge"
+    
+    kelvins_url = {'train': f"{url_preffix}/train_data.zip",
+                   'test': f"{url_preffix}/test_data.csv"}
+    
+    # Split URL to get the file name
+    filename = kelvins_url[data].split('/')[-1]
+    filename = '-'.join(filename.split('.')[:-1]) + '.csv'
+
+    # Get filepath where the file will be stored.
+    if folderpath is not None: 
+        filepath = os.path.join(folderpath, filename)
+    else:
+        filepath = filename
+
+    # Check if file already exists.
+    if os.path.exists(filepath) and not overwrite: 
+        return filepath
+    
+    # Create directory if folders do not exist.
+    if not os.path.exists(folderpath): 
+        mkdirtree(folderpath)
+
+    try:
+        # Downloading the file by sending the request to the URL
+        print('Downloading data from Kelvins dataset...', end='\r')
+        req = requests.get(kelvins_url[data])
+        
+        if data=='train':
+            # Extracting the zip file contents
+            zippedfile = zipfile.ZipFile(BytesIO(req.content))
+            zippedfile.extractall(os.path.abspath(folderpath))
+        else:
+            # Writing the file to the local file system
+            with open(filepath,'wb') as output_file:
+                output_file.write(req.content)
+
+        print('Downloading data from Kelvins dataset... Completed.')
+
+        if return_filepath: return filepath
+    except:
+        raise RuntimeError('Data could not be downloaded from Kelvins website.')
+    
 #%% FUNCTION: format_json
 def format_json(input:dict) -> str:
     """Convert dictionary to a prettify JSON string.

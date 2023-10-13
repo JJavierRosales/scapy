@@ -914,8 +914,8 @@ class ConjunctionEventsDataset(EventsPlotting):
             return 'ConjunctionEventsDataset()'
         else:
             event_lengths = list(map(len, self._events))
-            return f'ConjunctionEventsDataset(Events:{len(self._events)} | ' + \
-                   f'Number of CDMs per event: ' + \
+            return f'ConjunctionEventsDataset(Events: {len(self._events)} | ' + \
+                   f'CDMs per event: ' + \
                    f'{min(event_lengths)} (min), ' + \
                    f'{max(event_lengths)} (max), ' + \
                    f'{sum(event_lengths)/len(event_lengths):.2f} (mean))'
