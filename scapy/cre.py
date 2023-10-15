@@ -200,7 +200,7 @@ class CollisionRiskEvaluator(nn.Module):
         # Save figure if filepath is provided.
         if filepath is not None:
             print('Plotting to file: {}'.format(filepath))
-            fig.savefig(filepath)
+            fig.savefig(filepath, bbox_inches='tight')
 
         if return_ax:
             return ax

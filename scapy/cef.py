@@ -123,7 +123,7 @@ class CosineWarmupScheduler(optim.lr_scheduler._LRScheduler):
         # Save figure if filepath is provided.
         if filepath is not None:
             print('Plotting to file: {}'.format(filepath))
-            fig.savefig(filepath)
+            fig.savefig(filepath, bbox_inches='tight')
 
 
 #%% CLASS: ConjunctionEventForecaster
