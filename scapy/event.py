@@ -143,7 +143,7 @@ class EventsPlotting():
     def plot_features(self, features:Union[list, str], figsize:tuple=None, 
                       axs:Union[np.ndarray, plt.Axes] = None, 
                       return_axs:bool = False, filepath:str = None, 
-                      sharex:bool = True, 
+                      sharex:bool = True, row_subplots:int = 4,
                       *args, **kwargs) -> Union[None, np.ndarray]:
         """Plot a evolution of features per event. 
 
@@ -156,6 +156,8 @@ class EventsPlotting():
             other chart). Defaults to False.
             filepath (str, optional): Path to save the plot. Defaults to None.
             sharex (bool, optional): Flag to share X-axis. Defaults to True.
+            row_subplots (int, optional): Maximum number of subplots per row. 
+            Defaults to 4.
 
         Returns:
             Union[None, np.ndarray]: Array of axis objects if return_axs = True, 
@@ -168,7 +170,7 @@ class EventsPlotting():
         # Check if axs parameter is provided and not None
         if axs is None:
             # Get square matrix dimensions to arrange the subplots.
-            rows, cols = utils.plt_matrix(len(features))
+            rows, cols = utils.plt_matrix(len(features), row_subplots)
 
             # Set dimension of the final plot containing all subplots.
             if figsize is None: figsize = (cols*20/7, rows*12/6)
@@ -401,7 +403,7 @@ class ConjunctionEvent(EventsPlotting):
                 size=8, c='black', 
                 ha = 'center', va='top', transform=ax.transAxes, 
                 bbox = dict(facecolor = 'white', edgecolor = 'white',
-                            alpha = 0.5, pad = 1))
+                            alpha = 0.25, pad = 1))
 
 
         # Plot data 
@@ -539,16 +541,17 @@ class ConjunctionEventsDataset(EventsPlotting):
     # Proposed API for the pandas loader
     @staticmethod
     def from_pandas(df:pd.DataFrame, group_events_by:str,
-        df_to_ccsds_name_mapping:dict, dropna:bool = True, 
+        df_to_ccsds_name_mapping:dict = None, dropna:bool = True, 
         date_format:str='%Y-%m-%d %H:%M:%S.%f') -> ConjunctionEventsDataset:
         """Import Conjunction Events Dataset from pandas DataFrame.
 
         Args:
             df (pd.DataFrame): Pandas DataFrame containing all events.
             group_events_by (str): Column from DataFrame used to group events.
-            df_to_ccsds_name_mapping (dict): Dictionary containing the mapping 
-            of pandas columns with CDM features names as instructed by the CCSDS 
-            standards.
+            df_to_ccsds_name_mapping (dict, optional): Dictionary containing the 
+            mapping of pandas columns with CDM features names as instructed by 
+            the CCSDS standards. If None, pandas columns is assumed to follow 
+            CCSDS naming convention. Defaults to None.
             dropna (bool, optional): Flag to drop columns containing NaN values.
             Defaults to True.
             date_format (_type_, optional): Date format to convert datetime 
@@ -559,18 +562,23 @@ class ConjunctionEventsDataset(EventsPlotting):
         """
 
         # Remove columns with any NaN values.
-        print(f'Dataframe with {len(df)} rows and {len(df.columns)} columns')
+        print(f'Dataframe with {len(df)} rows and {len(df.columns)} columns.')
+
+        # If df_to_ccsds_name_mapping is None, assume pandas DataFrame columns
+        # follow CCSDS naming standards
+        if df_to_ccsds_name_mapping is None:
+            df_to_ccsds_name_mapping = {c:c for c in df.columns}
 
         if dropna:
             print('Dropping columns with NaNs...', end='\r')
             df = df.dropna(axis=1)
-            print('Dropping columns with NaNs... {} rows and {} columns' + \
-                  ' remaining'.format(len(df), len(df.columns)))
+            print(f'Dropping columns with NaNs... ' + \
+                  f' {len(df.columns)} columns remaining.')
 
         # Get dictionary of event_id's with row indexes per event.
         df_events = df.groupby(group_events_by).groups
-        print('Grouped into {} event(s) by {} column.' \
-                .format(len(df_events), group_events_by))
+        print(f'Grouped into {len(df_events)} event(s) ' + \
+              f'by {group_events_by} column.')
         
         # Initialize events list.
         events = []
@@ -619,25 +627,34 @@ class ConjunctionEventsDataset(EventsPlotting):
             events.append(ConjunctionEvent(event_cdms))
 
             # Update progress bar.
-            pb_events.refresh(i = n+1)
+            pb_events.refresh(i = n, nested_progress = True)
 
         # Print final message in progress bar.
-        pb_events.refresh(i = n+1, 
-            description='Events dataset imported.')
+        pb_events.refresh(i = n, nested_progress = False, 
+            description = 'Events dataset imported.')
         
         # Create ConjunctionEventsDataset object with the list of events 
         # extracted.
         event_dataset = ConjunctionEventsDataset(events = events)
-        print('\n{}'.format(event_dataset))
+        #print('\n{}'.format(event_dataset))
 
         return event_dataset
 
-    def to_dataframe(self, event_id:bool=False) -> pd.DataFrame:
+    def to_dataframe(self, event_id:bool=False, hazardous_threshold:float=None) -> pd.DataFrame:
         """Convert Conjunction Events dataset to pandas DataFrame.
 
         Args:
             event_id (bool): Flag to include an additional column with the 
             Conjunction Event ID. Defaults to False.
+            hazardous_threshold (float, optional): Add columns to identify 
+            hazardous conjunctions using a threshold upon the 
+            COLLISION_PROBABILITY. If threshold is not None, three internal 
+            columns are added to the dataframe:
+             - __HAZARDOUS: Boolean column where True identifies a conjunction as hazardous.
+             - __PHC: Integer column with 1s and 0s. 1 Means potential hazardous 
+             conjunction.
+             - __NHC: Integer column with 1s and 0s. 1 Means non hazardous 
+             conjunction. Complementary column to __PHC.
 
         Returns:
             pd.DataFrame: Pandas DataFrame with all CDMs from all events.
@@ -668,7 +685,27 @@ class ConjunctionEventsDataset(EventsPlotting):
         pb_events.refresh(i = e+1, 
             description='Pandas DataFrame saved.')
         
-        self._dataframe = pd.concat(event_dataframes, ignore_index=True)
+        df_events = pd.concat(event_dataframes, ignore_index=True)
+
+        if hazardous_threshold is not None:
+            # Compute column to segregate hazardous from non hazardous 
+            # conjunctions
+            df_events['__HAZARDOUS'] = df_events[['COLLISION_PROBABILITY']] >= \
+                                       hazardous_threshold
+
+            # Get dummy columns for complementary for __HAZARDOUS:
+            # - _PHC: Potential Hazardous Conjunction
+            # - _NHC: Non-Hazardous Conjunction
+            dummies = pd.get_dummies(df_events['__HAZARDOUS'], dtype=int) \
+                        .rename(columns={0: '__NHC', 1: '__PHC'})
+
+            df_events = df_events.join(dummies)
+
+            # Ensure that both dummy columns are available in the dataset
+            for dummy in ['__PHC', '__NHC']:
+                if not dummy in df_events.columns: df_events[dummy] = 0
+        
+        self._dataframe = df_events
         
         return self._dataframe
 
@@ -723,7 +760,10 @@ class ConjunctionEventsDataset(EventsPlotting):
         """
 
         # Get Conjunction Event dataset as a pandas DataFrame.
-        df = self.to_dataframe()
+        if hasattr(self, '_dataframe'):
+            df = self._dataframe
+        else:
+            df = self.to_dataframe()
 
         # Remove any columns and rows containing NaN values.
         df = df.dropna(axis=1)

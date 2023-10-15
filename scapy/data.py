@@ -5,21 +5,289 @@ from typing import Union
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
+import requests
+import zipfile
+from io import BytesIO
 
 import torch
 import torch.nn as nn
 from torch.utils.data import TensorDataset
 from sklearn.model_selection import train_test_split
 
+import os
 import sys
 sys.path.append("..")
 
 # Import local modules.
 from . import utils
+from . import ccsds
 from .cdm import ConjunctionDataMessage as CDM
 from .event import ConjunctionEvent as CE 
 from .event import ConjunctionEventsDataset as CED
 
+
+#%% FUNCTION: download_kelvins_data
+def get_kelvins_data(data:str, date_tca:datetime = None, 
+                     remove_outliers:bool = True, num_events:int = None,
+                     drop_features:list = ['c_rcs_estimate', 't_rcs_estimate'],
+                     folderpath:str = None, overwrite:bool = False, 
+                     print_log:bool = False, return_ced:bool=False) -> tuple:
+
+    """Get Kelvins Collision Avoidance Challenge dataset.
+
+    Args:
+        data (str): Type of data to download: 'train' or 'test'.
+        num_events (int, optional): Number of events to import. Defaults to 
+        None.
+        date_tca (datetime, optional): _description_. Defaults to None.
+        remove_outliers (bool, optional): Flag to remove outliers. Defaults to 
+        True.
+        drop_features (list, optional): List of features from original dataset 
+        to remove. Defaults to ['c_rcs_estimate', 't_rcs_estimate'].
+        folderpath (str, optional): Folder where the CSV files are saved. 
+        Defaults to None.
+        date_tca (datetime, optional): _description_. Defaults to None.
+        remove_outliers (bool, optional): Flag to remove outliers. Defaults to 
+        True.
+        overwrite (bool, optional): Overwrite file if it already exists. 
+        Defaults to False.
+        return_ced (bool, optional): Return CojunctionEventsDataset. Defaults to 
+        False.
+        print_log (bool, optional): Print description of the process. Defaults 
+        to False.
+
+    Raises:
+        RuntimeError: Download failed.
+
+    Returns:
+        str: Filepath of the dataset.
+    """
+
+    if folderpath is None: 
+        folderpath = os.path.join(utils.cwd, 'data', 'kelvins')
+
+    url_preffix = "https://kelvins.esa.int/media/public/" + \
+                  "competitions/collision-avoidance-challenge"
+    
+    kelvins_url = {'train': f"{url_preffix}/train_data.zip",
+                   'test': f"{url_preffix}/test_data.csv"}
+    
+    # Split URL to get the file name
+    filename = kelvins_url[data].split('/')[-1]
+    filename = '-'.join(filename.split('.')[:-1]) + '.csv'
+
+    # Get filepath where the file will be stored.
+    if folderpath is not None: 
+        filepath = os.path.join(folderpath, filename)
+    else:
+        filepath = filename
+
+    # Check if file already exists.
+    if os.path.exists(filepath) and not overwrite: 
+        if return_ced:
+            events = CED.from_pandas(df = pd.read_csv(filepath), 
+                                     group_events_by = '__EVENT_ID')
+            return filepath, events
+        else:
+            return filepath
+    
+    # Create directory if folders do not exist.
+    if not os.path.exists(folderpath): 
+        utils.mkdirtree(folderpath)
+
+    try:
+        # Downloading the file by sending the request to the URL
+        print('Downloading data from Kelvins website...', end='\r')
+        req = requests.get(kelvins_url[data])
+        
+        if data=='train':
+            # Extracting the zip file contents
+            zippedfile = zipfile.ZipFile(BytesIO(req.content))
+            zippedfile.extractall(os.path.abspath(folderpath))
+        else:
+            # Writing the file to the local file system
+            with open(filepath,'wb') as output_file:
+                output_file.write(req.content)
+                output_file.close()
+
+        print('Downloading data from Kelvins website... Done.')
+
+    except:
+        raise RuntimeError('Data could not be downloaded from Kelvins website.')
+
+    # Import Kelvins dataset using pandas.
+    kelvins = pd.read_csv(filepath)
+
+    # Drop features if passed to the function
+    if len(drop_features)>0:
+        kelvins = kelvins.drop(drop_features, axis=1)
+        if print_log: print('Features removed:\n{drop_features}')
+
+    # Remove rows containing NaN values.
+    if print_log: print('Dropping rows with NaNs...', end='\r')
+    kelvins = kelvins.dropna()
+    if print_log: print(f'Dropping rows with NaNs... {len(kelvins)} '
+                        f'entries remaining.')
+
+    if remove_outliers:
+
+        if print_log: print('Removing outliers...', end='\r')
+        kelvins = kelvins[kelvins['t_sigma_r'] <= 20]
+        kelvins = kelvins[kelvins['c_sigma_r'] <= 1000]
+        kelvins = kelvins[kelvins['t_sigma_t'] <= 2000]
+        kelvins = kelvins[kelvins['c_sigma_t'] <= 100000]
+        kelvins = kelvins[kelvins['t_sigma_n'] <= 10]
+        kelvins = kelvins[kelvins['c_sigma_n'] <= 450]
+
+        if print_log: print(f'Removing outliers... {len(kelvins)} '
+                            f'entries remaining.')
+
+    # Shuffle data.
+    kelvins = kelvins.sample(frac=1, axis=1).reset_index(drop=True)
+
+    # Get CDMs grouped by event_id
+    kelvins_events = kelvins.groupby('event_id').groups
+    if print_log: print(f'Grouped rows into {len(kelvins_events)} events')
+
+    # Get TCA as current datetime (not provided in Kelvins dataset).
+    if date_tca is None: date_tca = datetime.now()
+    if print_log: print('Taking TCA as current time: {}'.format(date_tca))
+
+    # Get number of events to import from Kelvins dataset.
+    num_events = len(kelvins_events) if num_events is None \
+        else min(num_events, len(kelvins_events))
+
+    # Initialize array of RTN reference frame for position and velocity.
+    rtn_components = ['R', 'T', 'N', 'RDOT', 'TDOT', 'NDOT']
+
+    # Iterate over all features to get the time series subsets
+    pb_events = utils.ProgressBar(iterations = range(num_events),
+                    title = 'KELVINS DATASET IMPORT:', 
+                    description='Importing Events from Kelvins dataset...')
+
+    # Initialize counter for progressbar
+    n = 0
+
+    # Initialize events list to store all Event objects.
+    events = []
+
+    # Iterate over all events in Kelvins dataset
+    for event_id, rows in kelvins_events.items():
+
+        if (n+1) > num_events: break
+
+        # Update counter for progress bar.
+        n += 1
+        
+
+        # Initialize CDM list to store all CDMs contained in a single event.
+        event_cdms = []
+
+        # Iterate over all CDMs in the event.
+        for _, k_cdm in kelvins.iloc[rows].iterrows():
+
+            # Initialize CDM object.
+            cdm = CDM()
+
+            time_to_tca = k_cdm['time_to_tca']  # days
+            date_creation = date_tca - timedelta(days=time_to_tca)
+
+            cdm['CREATION_DATE'] = CDM.datetime_to_str(date_creation)
+            cdm['TCA'] = CDM.datetime_to_str(date_tca)
+
+            cdm['MISS_DISTANCE'] = k_cdm['miss_distance']
+            cdm['RELATIVE_SPEED'] = k_cdm['relative_speed']
+
+
+            # Get relative state vector components.
+            for state in ['POSITION', 'VELOCITY']:
+                for rtn in rtn_components[:3]:
+                    feature = 'RELATIVE_{}_{}'.format(state, rtn)
+                    cdm[feature] = k_cdm[feature.lower()] 
+
+            # Get object specific features.
+            for k, v in {'OBJECT1':'t', 'OBJECT2':'c'}.items():
+
+                # Get covariance matrix elements for both objects (lower 
+                # diagonal).
+                for i, i_rtn in enumerate(rtn_components):
+                    for j, j_rtn in enumerate(rtn_components):
+                        if j>i: continue
+
+                        # Get feature label in uppercase
+                        feature = '_C{}_{}'.format(i_rtn, j_rtn)
+
+                        if i_rtn == j_rtn:
+                            cdm[k + feature] = \
+                                k_cdm['{}_sigma_{}' \
+                                    .format(v,i_rtn).lower()]**2.0
+                        else:
+                            # Re-scale non-diagonal elements of the covariance
+                            # matrix using the variances of the variable (i.e
+                            # CR_T = t_cr_t * t_sigma_r * t_sigma_t)
+                            cdm[k + feature] = \
+                                k_cdm[v + feature.lower()] * \
+                                k_cdm['{}_sigma_{}'.format(v,j_rtn).lower()] * \
+                                k_cdm['{}_sigma_{}'.format(v,i_rtn).lower()]
+
+                cdm[k+'_RECOMMENDED_OD_SPAN'] = k_cdm[v+'_recommended_od_span']
+                cdm[k+'_ACTUAL_OD_SPAN'] = k_cdm[v+'_actual_od_span']
+                cdm[k+'_OBS_AVAILABLE'] = k_cdm[v+'_obs_available']
+                cdm[k+'_OBS_USED'] = k_cdm[v+'_obs_used']
+                cdm[k+'_RESIDUALS_ACCEPTED'] = k_cdm[v+'_residuals_accepted']
+                cdm[k+'_WEIGHTED_RMS'] = k_cdm[v+'_weighted_rms']
+                cdm[k+'_SEDR'] = k_cdm[v+'_sedr']
+
+                # Get number of days until CDM creation.
+                for t in ['start', 'end']:
+                    time_lastob = k_cdm['{}_time_lastob_{}'.format(v,t)]
+                    time_lastob = date_creation -timedelta(days=time_lastob)
+                    cdm['{}_TIME_LASTOB_{}'.format(k, t).upper()] = \
+                        CDM.datetime_to_str(time_lastob)
+
+            cdm['OBJECT1_OBJECT_TYPE'] = 'PAYLOAD'
+            cdm['OBJECT2_OBJECT_TYPE'] = k_cdm['c_object_type']
+
+            cdm['COLLISION_PROBABILITY'] = k_cdm['risk']
+
+            values_extra = {}
+            for feature in ['max_risk_estimate', 'max_risk_scaling']:
+                if not feature in list(k_cdm.keys()): continue
+                values_extra.update({f'__{feature.upper()}':k_cdm[feature]})
+
+            cdm._values_extra.update(values_extra)
+
+            # Append CDM object to the event list.
+            event_cdms.append(cdm)
+
+            # Update progress bar
+            pb_events.refresh(i = n, nested_progress = True)
+
+        # Append ConjunctionEvent object to events list.
+        events.append(CE(event_cdms))
+
+    # Update progress bar.
+    pb_events.refresh(i = n, nested_progress = False,
+        description = f'Dataset imported ({len(events)} events).\n')
+
+    # Get ConjunctionEventsDataset from events list
+    events = CED(events=events)
+
+    # Export events as a DataFrame including a column '__EVENT_ID'
+    df = events.to_dataframe(event_id=True)
+
+    # Cast all columns to the CCSDS variable types.
+    #df = df.astype(ccsds.df_dtype_conversion)
+
+    # Overwrite DataFrame with the CCSDS standards
+    df.to_csv(filepath, index=False)
+
+    if return_ced:
+        return filepath, events
+    else:
+        return filepath
+
+    
 #%% FUNCTION: kelvins_challenge_events
 def kelvins_challenge_events(filepath:str, num_events:int = None, 
         date_tca:datetime = None, remove_outliers:bool = True,
