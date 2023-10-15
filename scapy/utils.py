@@ -11,13 +11,14 @@ import warnings
 import time
 import scipy.stats as st
 from typing import Union
-import requests
-import zipfile
-from io import BytesIO
+
 
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import roc_auc_score
+from sklearn.metrics import confusion_matrix
 from sklearn.neighbors import KernelDensity
+from sklearn.utils.class_weight import compute_class_weight
+
 
 import statsmodels.api as smapi
 import statsmodels as sm
@@ -35,6 +36,68 @@ foldername = 'scapy'
 cwd = str(Path(os.getcwd()[:os.getcwd().index(foldername)+len(foldername)]))
 
 
+#%% FUNCTION: normalise_cfm
+def normalise_cfm(tp:int, fp:int, fn:int, tn:int, 
+                  normalize:str='cols', print_cf:bool=False) -> tuple:
+      """Normalise confusion matrix elements.
+
+      Args:
+          tp (int): True positives.
+          fp (int): False positives.
+          fn (int): False negatives.
+          tn (int): True negatives
+          normalize (str, optional): Normalizes confusion matrix over the true 
+          if 'rows' or 'true', predicted conditions if 'cols' or 'pred' or all 
+          the population. If None, confusion matrix will not be normalized. 
+          Defaults to 'cols'.
+          print_cf (bool, optional): Print Confusion matrix. Defaults to False.
+
+      Returns:
+          tuple: Confusion matrix values normalised.
+      """
+
+      if normalize=='cols' or normalize=='pred':
+            (tpn, fnn) = (tp/(tp+fn), fn/(tp+fn)) if (tp + fn)>0 else (0, 0)
+            (fpn, tnn) = (fp/(fp+tn), tn/(fp+tn)) if (fp + tn)>0 else (0, 0)
+      elif normalize=='rows' or normalize=='true':
+            (tpn, fpn) = (tp/(tp+fp), fp/(tp+fp)) if (tp + fp)>0 else (0, 0)
+            (fnn, tnn) = (fn/(fn+tn), tn/(fn+tn)) if (fn + tn)>0 else (0, 0)
+      else:
+            all = tp + fp + fn + tn
+            tpn, fpn, fnn, tnn = tp/all, fp/all, fn/all, tn/all
+
+      if print_cf:
+            print(f'Confusion matrix normalised:\n'
+                  f'TP: {tpn*100:>4.1f}% {"(" + str(tp) + ")":<10} '
+                  f'FP: {fpn*100:>4.1f}% {"(" + str(fp) + ")":<10}\n'
+                  f'FN: {fnn*100:>4.1f}% {"(" + str(fn) + ")":<10} '
+                  f'TN: {tnn*100:>4.1f}% {"(" + str(tn) + ")":<10}')
+
+      return tp, fp, fn, tn
+#%% FUNCTION: get_class_weight
+def get_class_weight(data:np.ndarray, class_weight:str='balanced') -> tuple:
+    """Compute classification weights to compensate skewness of dataset.
+
+    Args:
+        data (np.ndarray): Data containing the categorical values.
+        class_weight (str, optional): Type of weighting method. Defaults to 
+        'balanced'.
+
+    Returns:
+        tuple: Array with classes and weights per class.
+    """
+
+    # Get unique classes in the data array
+    classes = np.unique(data)
+
+    # Compute class weights using sklearn
+    weights = torch.tensor(compute_class_weight(
+                                    class_weight = class_weight,
+                                    classes = classes,
+                                    y = data),
+                            dtype=torch.float)
+    return classes, weights
+
 #%% FUNCTION: mkdirtree
 def mkdirtree(path:str) -> None:
     """Create folder using a reference path.
@@ -44,80 +107,15 @@ def mkdirtree(path:str) -> None:
     """
 
     # Get all subfolders required 
-    subfolders = path.split('\\')
+    subfolders = path.split('/')
 
     for f, folder in enumerate(subfolders):
+        if folder=='': continue
         
-        folderpath = '\\'.join(subfolders[:f+1])
+        folderpath = '/'.join(subfolders[:f+1])
         if not os.path.exists(folderpath) and not os.path.isfile(folderpath): 
             os.mkdir(folderpath)
 
-#%% FUNCTION: download_kelvins_data
-def download_kelvins_data(data:str, folderpath:str = None, overwrite:bool = False, return_filepath:bool = False) -> Union[None, str]:
-    """_summary_
-
-    Args:
-        data (str): Type of data to download: 'train' or 'test'.
-        folderpath (str, optional): Folder where the CSV files are saved. 
-        Defaults to None.
-        overwrite (bool, optional): Overwrite file if it already exists. 
-        Defaults to False.
-        return_filepath (bool, optional): Return filepath. Defaults to False.
-
-    Raises:
-        RuntimeError: Download failed.
-
-    Returns:
-        Union[None, str]: Filepath if return_filepath is True, None otherwise.
-    """
-
-    if folderpath is None: 
-        folderpath = os.path.join(cwd,'data','esa-challenge')
-
-    url_preffix = "https://kelvins.esa.int/media/public/" + \
-                  "competitions/collision-avoidance-challenge"
-    
-    kelvins_url = {'train': f"{url_preffix}/train_data.zip",
-                   'test': f"{url_preffix}/test_data.csv"}
-    
-    # Split URL to get the file name
-    filename = kelvins_url[data].split('/')[-1]
-    filename = '-'.join(filename.split('.')[:-1]) + '.csv'
-
-    # Get filepath where the file will be stored.
-    if folderpath is not None: 
-        filepath = os.path.join(folderpath, filename)
-    else:
-        filepath = filename
-
-    # Check if file already exists.
-    if os.path.exists(filepath) and not overwrite: 
-        return filepath
-    
-    # Create directory if folders do not exist.
-    if not os.path.exists(folderpath): 
-        mkdirtree(folderpath)
-
-    try:
-        # Downloading the file by sending the request to the URL
-        print('Downloading data from Kelvins dataset...', end='\r')
-        req = requests.get(kelvins_url[data])
-        
-        if data=='train':
-            # Extracting the zip file contents
-            zippedfile = zipfile.ZipFile(BytesIO(req.content))
-            zippedfile.extractall(os.path.abspath(folderpath))
-        else:
-            # Writing the file to the local file system
-            with open(filepath,'wb') as output_file:
-                output_file.write(req.content)
-
-        print('Downloading data from Kelvins dataset... Completed.')
-
-        if return_filepath: return filepath
-    except:
-        raise RuntimeError('Data could not be downloaded from Kelvins website.')
-    
 #%% FUNCTION: format_json
 def format_json(input:dict) -> str:
     """Convert dictionary to a prettify JSON string.
@@ -761,13 +759,18 @@ def binary_auc_roc(outputs:torch.Tensor, targets:torch.Tensor) -> float:
 
     return aucroc
 #%% FUNCTION: binary_confusion_matrix
-def binary_confusion_matrix(outputs:torch.Tensor, targets:torch.Tensor, 
-                          return_metrics:bool = True) -> dict:
-    """Compute confusion matrix.
+def binary_confusion_matrix(outputs:Union[np.ndarray, torch.Tensor], 
+                            targets:Union[np.ndarray, torch.Tensor],
+                            normalize:str = None, 
+                            return_metrics:bool = True) -> dict:
+    """Compute confusion matrix for binary classification.
 
     Args:
-        outputs (torch.Tensor): Predicted categories.
-        targets (torch.Tensor): True categories.
+        outputs (Union[np.ndarray, torch.Tensor]): Predicted categories.
+        targets (Union[np.ndarray, torch.Tensor]): True categories.
+        normalise (str, optional): Normalises confusion matrix over the true 
+        (rows), predicted (columns) conditions or all the population. If None, 
+        confusion matrix will not be normalised. Defaults to None.
         return_metrics (bool, optional): Return derived metrics Accuracy, 
         Precision, Recall and F1-Score. Defaults to True.
 
@@ -776,25 +779,37 @@ def binary_confusion_matrix(outputs:torch.Tensor, targets:torch.Tensor,
         metrics when applicable.
     """
     
-    y_true = targets.detach().numpy()
-    y_pred = outputs.detach().numpy()
+    # Get true and prediced values 
+    if isinstance(targets, torch.Tensor):
 
-    y_true = np.asarray([int(np.argmax(i)) for i in y_true])
-    y_pred = np.asarray([int(np.argmax(i)) for i in y_pred])
+        y_true = targets.detach().numpy()
+        y_pred = outputs.detach().numpy()
 
-    cfm = {}
-    cfm['tp'] = np.sum((y_true==1)*(y_pred==1))
-    cfm['tn'] = np.sum((y_true==0)*(y_pred==0))
-    cfm['fp'] = np.sum((y_true==0)*(y_pred==1))
-    cfm['fn'] = np.sum((y_true==1)*(y_pred==0))
+        y_true = np.asarray([int(np.argmax(i)) for i in y_true])
+        y_pred = np.asarray([int(np.argmax(i)) for i in y_pred])
+    else:
+        y_true = targets
+        y_pred = outputs
 
+    
+    # Initialise confusion matrix dictionary
+    cfm = {}    
+    cfm['tn'], cfm['fp'], cfm['fn'], cfm['tp'] = \
+        confusion_matrix(y_true, y_pred, normalize=normalize).ravel()
 
     if return_metrics:
-        cfm['accuracy'] = (cfm['tp'] + cfm['tn'])/targets.size(0)*100
-        cfm['precision'] = cfm['tp']/(cfm['tp'] + cfm['fp'])*100
-        cfm['recall'] = cfm['tp']/(cfm['tp'] + cfm['fn'])*100
-        cfm['f1'] = 2*cfm['precision'] * cfm['recall'] / \
-                    (cfm['precision'] + cfm['recall'])
+        # Get the values from the confusion matrix.
+        tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
+
+        metrics = {'accuracy':  (tp + tn) / (tp + fp + fn + tn),
+                   'recall':    tp / (tp + fn) if (tp + fn)>0 else 0,
+                   'precision': tp / (tp + fp) if (tp + fp)>0 else 0}
+    
+        metrics['f1'] = 2*(metrics['precision'] * metrics['recall'])/ \
+                        (metrics['precision'] + metrics['recall']) \
+                        if (metrics['precision'] + metrics['recall'])>0 else 0
+        
+        cfm.update(metrics)
 
     return cfm
 #%% FUNCTION: mape
@@ -899,16 +914,18 @@ def docstring(item, internal_attr:bool=False, builtin_attr:bool=False) -> None:
         print('Method: {}\n\n{}\n{}' \
             .format(method,getattr(item, method).__doc__, "_"*80))
 #%% FUNCTION: plt_matrix
-def plt_matrix(num_subplots:int) -> tuple:
+def plt_matrix(num_subplots:int, row_subplots:int = 4) -> tuple:
     """Calculate number of rows and columns for subplots.
 
     Args:
         num_subplots (int): Number of subplots contained in the matrix.
+        row_subplots (int, optional): Maximum number of subplots per row. 
+        Defaults to 4.
 
     Returns:
         tuple: Number of rows and columns of the matrix.
     """
-    if num_subplots < 5:
+    if num_subplots <= row_subplots:
         return 1, num_subplots
     else:
         cols = math.ceil(math.sqrt(num_subplots))
