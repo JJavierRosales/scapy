@@ -68,7 +68,7 @@ class CollisionRiskEvaluator(nn.Module):
         self.output_size = output_size
         self.layers = layers
         self.classification = classification
-        self._class_weights = class_weights
+        self.class_weights = class_weights
 
         if isinstance(act_functions,list):
             if len(act_functions) < len(layers):
@@ -189,9 +189,9 @@ class CollisionRiskEvaluator(nn.Module):
         ax.set_xlabel('Number of iterations')
         
         if not self.classification:
-            ax.set_ylabel('MSE Loss')
+            ax.set_ylabel('MSE Loss\n(Regression mode)')
         else:
-            ax.set_ylabel('Cross Entropy Loss')
+            ax.set_ylabel('Cross Entropy Loss\n(Classification mode)')
 
         # Set legend and grid for better visualization.
         ax.legend(fontsize=8)
@@ -278,7 +278,7 @@ class CollisionRiskEvaluator(nn.Module):
         self.optimizer = optim.Adam(self.parameters(), lr = lr)
 
         if self.classification:
-            self.criterion = nn.CrossEntropyLoss(weight = self._class_weights)
+            self.criterion = nn.CrossEntropyLoss(weight = self.class_weights)
         else:
             self.criterion = nn.MSELoss()
 
@@ -317,7 +317,7 @@ class CollisionRiskEvaluator(nn.Module):
         # Initialize progress bar to show training progress.
         n_batches = len(train_loader)
         pb_epochs = utils.ProgressBar(iterations = range(epochs*n_batches),
-                title = 'TRAINING COLLISION RISK PROBABILITY ESTIMATOR MODEL:')
+                title = 'TRAINING COLLISION RISK EVALUATOR MODEL:')
 
         for epoch in range(epochs):
 
@@ -416,6 +416,30 @@ class CollisionRiskEvaluator(nn.Module):
             self.save(filepath = filepath)
             print(f'Saving model parameters ... Done.')
 
+    @staticmethod
+    def _get_filepath(filepath:str) -> str:
+        """Get filepath from file. If only filename is provided, parameters
+        are saved by default in ../scapy/models/parameters/cef folder.
+
+        Args:
+            filepath (str): File path or name.
+
+        Returns:
+            str: Absolute filepath.
+        """
+
+        # Check if filepath is actually only the name of the file
+        if len(filepath.split('/'))==1:
+            folderpath = os.path.join(utils.cwd, 'models', 'parameters', 'cre')
+
+            # Create local directory if it does not exist already.
+            utils.mkdirtree(folderpath)
+
+            filepath =  os.path.join(folderpath, filepath)
+
+
+        return filepath
+
     def save(self, filepath:str, only_parameters:bool=True):
         """Save model to an external file.
 
@@ -424,10 +448,13 @@ class CollisionRiskEvaluator(nn.Module):
             only_parameters (bool, optional): Save only models parameters or the 
             entire model. Defaults to True.
         """
+
+        filepath = self._get_filepath(filepath)
+
         if only_parameters:
             torch.save({
                 'classification': self.classification,
-                'class_weights':self._class_weights,
+                'class_weights': self.class_weights,
                 'num_params': sum(p.numel() for p in self.parameters()),
                 'epochs': self._learn_results['epoch'][-1],
                 'model': self.state_dict() if only_parameters else self,
@@ -446,48 +473,62 @@ class CollisionRiskEvaluator(nn.Module):
             filepath (str): Path of the model source file.
         """
 
-        if 'parameters' in filepath:
+        filepath = self._get_filepath(filepath)
 
-            # Get the checkpoint file
-            torch_file = torch.load(filepath)
-
-            self.load_state_dict(torch_file['model'])
-            if not hasattr(self, 'optimizer'):
-                self.optimizer = optim.Adam(self.parameters(), lr = 1e-3)
-            self.optimizer.load_state_dict(torch_file['optimizer'])
-            self._loss = torch_file['loss']
-            self._learn_results = torch_file['learn_results']
-            if 'classification' in torch_file.keys():
-                self.classification = torch_file['classification']
-                self._class_weights = torch_file['class_weights']
-            else:
-                self.classification = False
-                self._class_weights = torch.Tensor([0.5, 0.5])
+        # Check if filepath exists.
+        if not os.path.exists(filepath):
+            print(f'Model not found in {os.path.relpath(filepath)}')
         else:
-            self = torch.load(filepath)
+            if 'parameters' in filepath:
 
-    def test(self, data_test:TensorDataset, test_batch_size:int) -> np.ndarray:
+                # Get the checkpoint file
+                torch_file = torch.load(filepath)
+
+                self.load_state_dict(torch_file['model'], strict=False)
+                if not hasattr(self, 'optimizer'):
+                    self.optimizer = optim.Adam(self.parameters(), lr = 1e-3)
+                self.optimizer.load_state_dict(torch_file['optimizer'])
+                self._loss = torch_file['loss']
+                self._learn_results = torch_file['learn_results']
+                if 'classification' in torch_file.keys():
+                    self.classification = torch_file['classification']
+                    self.class_weights = torch_file['class_weights']
+                else:
+                    self.classification = False
+                    self.class_weights = torch.Tensor([0.5, 0.5])
+            else:
+                self = torch.load(filepath)
+
+            if not hasattr(self, '_device'):
+                self._device = torch.device('cpu')
+
+    def test(self, data:TensorDataset, test_batch_size:int=None, as_dataframe:bool=False) -> Union[dict, pd.DataFrame]:
         """Compute loss on a test set of events using the trained model.
 
         Args:
-            data_test (TensorDataset): Tensor dataset for testing with inputs 
+            data (TensorDataset): Tensor dataset for testing with inputs 
             and targets.
-            test_batch_size (int): Batch size.
+            test_batch_size (int, optional): Batch size. Defaults to None.
+            as_dataframe (bool, optional): Return results as pandas Dataframe 
+            (True) or as a dictionary (False). Defaults to False.
 
         Returns:
-            dict: Dictionary containing the test results for the performance
-            metrics in the format key:results. Every performance metric (key) 
-            contains an array of size equal to test_batch_size with the results.
+            Union[dict, pd.DataFrame]: Dictionary or DataFrame containing the 
+            test results for the performance metrics in the format key:results. 
+            Every performance metric (key) contains an array of size equal to 
+            test_batch_size with the results.
         """
 
-        
-        if test_batch_size > len(data_test):
-            test_batch_size = len(data_test)
+        if test_batch_size is None:
+            test_batch_size = len(data)
+        elif test_batch_size > len(data):
+            test_batch_size = len(data)
             warnings.warn(f'\nParameter test_batch_size ({test_batch_size})'
                           f'can only be less or equal to the number of '
-                          f'items on events_set input ({len(data_test)})'
+                          f'items on events_set input ({len(data)})'
                           f'\nSetting new value for test_batch_size='
-                          f'{len(data_test)}.')
+                          f'{len(data)}.')
+            
         
         # Get loader objects for test set. The DataLoader class works by 
         # creating an iterable dataset object and iterating over it in batches, 
@@ -495,7 +536,7 @@ class CollisionRiskEvaluator(nn.Module):
         # creates has the shape (batches, items) where items are the a number of 
         # elements n = int(len(Dataset)/batch_size) taken from the Dataset 
         # passed into the class.
-        test_loader = DataLoader(dataset = data_test, 
+        test_loader = DataLoader(dataset = data, 
                                  batch_size = test_batch_size, 
                                  shuffle = True)
 
@@ -520,11 +561,10 @@ class CollisionRiskEvaluator(nn.Module):
             reg_criterion = {'mae': nn.L1Loss(),
                              'mse': nn.MSELoss(reduction='mean'),
                              'sse': nn.MSELoss(reduction='sum'),
-                             'mape': utils.mape,
-                             'pocid': utils.pocid}
+                             'mape': utils.mape}
 
             # Initialize list of labels with the different regression metrics.
-            metrics = ['sse', 'mse', 'mae', 'mape', 'bic', 'pocid']
+            metrics = ['sse', 'mse', 'mae', 'mape', 'bic']
 
         # Initialise arrays to store the results
         results = {m:np.zeros((len(test_loader))) for m in metrics}
@@ -565,7 +605,10 @@ class CollisionRiskEvaluator(nn.Module):
                     results['bic'][t] = t_sz*np.log(results['mse'][t]) + \
                                         k*np.log(t_sz)
 
-        return results
+        if as_dataframe:
+            return pd.DataFrame.from_dict(data = results, orient='columns')
+        else:
+            return results
 
     def forward(self, x:torch.Tensor) -> torch.Tensor:
         """Compute risk evaluation.

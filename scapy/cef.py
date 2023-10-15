@@ -243,7 +243,8 @@ class ConjunctionEventForecaster(nn.Module):
             validation_only (bool, optional): Plot validation loss only. 
             Defaults to False.
             plot_lr (bool, optional): Plot learning rate. Defaults to False.
-            label (str, optional): Label of feature plotted. Defaults to None.
+            label (str, optional): Label of feature plotted ('validation' or 
+            'training'). Defaults to None.
             ax (plt.Axes, optional): Axis object. Defaults to None.
             return_ax (bool, optional): Return axis object. Defaults to False.
 
@@ -575,6 +576,30 @@ class ConjunctionEventForecaster(nn.Module):
             print(f'\nSaving model parameters ...', end='\r')
             self.save(filepath = filepath)
             print(f'Saving model parameters ... Done.')
+
+    @staticmethod
+    def _get_filepath(filepath:str) -> str:
+        """Get filepath from file. If only filename is provided, parameters
+        are saved by default in ../scapy/models/parameters/cef folder.
+
+        Args:
+            filepath (str): File path or name.
+
+        Returns:
+            str: Absolute filepath.
+        """
+
+        # Check if filepath is actually only the name of the file
+        if len(filepath.split('/'))==1:
+            folderpath = os.path.join(utils.cwd, 'models', 'parameters', 'cre')
+
+            # Create local directory if it does not exist already.
+            utils.mkdirtree(folderpath)
+
+            filepath =  os.path.join(folderpath, filepath)
+
+
+        return filepath
             
     def save(self, filepath:str, only_parameters:bool=True):
         """Save model to an external file.
@@ -584,6 +609,9 @@ class ConjunctionEventForecaster(nn.Module):
             only_parameters (bool, optional): Save only models parameters or the 
             entire model. Defaults to True.
         """
+
+        filepath = self._get_filepath(filepath)
+
         if only_parameters:
             torch.save({
                 'num_params': sum(p.numel() for p in self.parameters()),
@@ -595,8 +623,10 @@ class ConjunctionEventForecaster(nn.Module):
                 'learn_results': self._learn_results,
                 'features_stats': self._features_stats
             },  filepath)
+
         else:
             torch.save(self, filepath)
+
 
     def load(self, filepath:str):
         """Load model instance or model parameters.
@@ -605,50 +635,65 @@ class ConjunctionEventForecaster(nn.Module):
             filepath (str): Path of the model source file.
         """
 
-        if 'parameters' in filepath:
+        filepath = self._get_filepath(filepath)
 
-            # Get the checkpoint file
-            torch_file = torch.load(filepath)
-
-            self.load_state_dict(torch_file['model'])
-            if not hasattr(self, 'optimizer'):
-                self.optimizer = optim.Adam(self.parameters(), lr = 1e-3)
-            self.optimizer.load_state_dict(torch_file['optimizer'])
-            self._loss = torch_file['loss']
-            self._learn_results = torch_file['learn_results']
-            self._features_stats = torch_file['features_stats']
+        # Check if filepath exists.
+        if not os.path.exists(filepath):
+            print(f'Model not found in {os.path.relpath(filepath)}')
         else:
-            self = torch.load(filepath)
+            if 'parameters' in filepath:
+
+                # Get the checkpoint file
+                torch_file = torch.load(filepath)
+
+                self.load_state_dict(torch_file['model'])
+
+                if not hasattr(self, 'optimizer'):
+                    self.optimizer = optim.Adam(self.parameters(), lr = 1e-3)
+
+                self.optimizer.load_state_dict(torch_file['optimizer'])
+                self._loss = torch_file['loss']
+                self._learn_results = torch_file['learn_results']
+                self._features_stats = torch_file['features_stats']
+            else:
+                self = torch.load(filepath)
+            
+            if not hasattr(self, '_device'):
+                self._device = torch.device('cpu')
+
     
-    def test(self, events_test:CED, test_batch_size:int, 
-             num_workers:int = 4) -> dict:
+    def test(self, event_set:CED, test_batch_size:int, 
+             num_workers:int = 4, as_dataframe:bool=False) -> Union[dict, pd.DataFrame]:
         """Compute loss on a test set.
 
         Args:
-            events_test (ConjunctionEventsDataset): Conjunction Events Dataset
+            event_set (ConjunctionEventsDataset): Conjunction Events Dataset
             object.
             test_batch_size (int): Batch size.
             num_workers (int, optional): Parallel processes for data loading. 
             Defaults to 4.
+            as_dataframe (bool, optional): Return results as pandas Dataframe 
+            (True) or as a dictionary (False). Defaults to False.
 
         Returns:
-            dict: Dictionary containing the test results for the performance
-            metrics in the format key:results. Every performance metric (key) 
-            contains an array of size equal to test_batch_size with the results.
+            Union[dict, pd.DataFrame]: Dictionary or DataFrame containing the 
+            test results for the performance metrics in the format key:results. 
+            Every performance metric (key) contains an array of size equal to 
+            test_batch_size with the results.
         """
 
         # Get test dataset with normalized features using the stats metrics. 
-        test_set = DatasetEventDataset(event_set = events_test, 
+        test_set = DatasetEventDataset(event_set = event_set, 
                                        features = self._features, 
                                        features_stats = self._features_stats)
         
-        if test_batch_size > len(events_test):
-            test_batch_size = len(events_test)
+        if test_batch_size > len(event_set):
+            test_batch_size = len(event_set)
             warnings.warn(f'\nParameter test_batch_size ({test_batch_size})'
                           f'can only be less or equal to the number of '
-                          f'items on events_set input ({len(events_test)})'
+                          f'items on events_set input ({len(event_set)})'
                           f'\nSetting new value for test_batch_size='
-                          f'{len(events_test)}.')
+                          f'{len(event_set)}.')
         
         # Get loader objects for test set. The DataLoader class works by 
         # creating an iterable dataset object and iterating over it in batches, 
@@ -680,6 +725,11 @@ class ConjunctionEventForecaster(nn.Module):
 
         # Initialise arrays to store the results
         results = {m:np.zeros((len(test_loader))) for m in metrics}
+
+        # Initialize progress bar to show training progress.
+        n_batches = len(test_loader)
+        pb_batches = utils.ProgressBar(iterations=range(n_batches),
+                                      title = 'TESTING FORECASTING MODEL:')
 
         # Iterate over all items in the test_loader
         with torch.no_grad():
@@ -722,8 +772,19 @@ class ConjunctionEventForecaster(nn.Module):
 
                 results['bic'][t] = t_sz*np.log(results['mse'][t]) + \
                                     k*np.log(t_sz)
+                
+                # Update progress bar.
+                mean_loss = np.mean(results["mse"][:t+1])
+                description =  f'MSE Loss = {mean_loss:6.4e} (mean)'
 
-        return results
+                pb_batches.refresh(i = t+1, 
+                                  description = description,
+                                  nested_progress = True)
+                
+        if as_dataframe:
+            return pd.DataFrame.from_dict(data = results, orient='columns')
+        else:
+            return results
 
     def predict(self, event: CE) -> CDM:
         """Predict next CDM object from a given event.
@@ -747,7 +808,7 @@ class ConjunctionEventForecaster(nn.Module):
         # event passed as a parameter.
         inputs, inputs_length = ds[0]
 
-        # Allocate torch to the 
+        # Allocate tensors to the device
         inputs = inputs.to(self._device)
         inputs_length = inputs_length.to(self._device)
 
