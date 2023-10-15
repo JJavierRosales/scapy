@@ -707,6 +707,8 @@ class ConjunctionDataMessage():
         elif key.startswith('OBJECT2_'):
             key = key.split('OBJECT2_')[1]
             self.set_object(1, key, value)
+        elif key.startswith('_'):
+            self._values_extra.update(dict(key = value))
         else:
             raise ValueError('Invalid key: {}'.format(key))
 
