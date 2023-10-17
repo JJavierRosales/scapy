@@ -927,6 +927,12 @@ def plt_matrix(num_subplots:int, row_subplots:int = 4) -> tuple:
     """
     if num_subplots <= row_subplots:
         return 1, num_subplots
+    elif num_subplots>row_subplots**2:
+        
+        cols = row_subplots
+        rows = math.ceil(num_subplots/row_subplots)
+
+        return rows, cols
     else:
         cols = math.ceil(math.sqrt(num_subplots))
         rows = 0
