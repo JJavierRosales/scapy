@@ -16,6 +16,7 @@ import os
 import re
 
 from . import utils
+from . import ccsds
 from .cdm import ConjunctionDataMessage as CDM
 
 mpl.rcParams['axes.unicode_minus'] = False
@@ -62,8 +63,8 @@ class DatasetEventDataset(Dataset):
             null_features = df.columns[df.isnull().any()]
             for feature in features:
                 if feature in null_features:
-                    raise RuntimeError('Feature {} is not present in the ' + \
-                                       'dataset'.format(feature))
+                    raise RuntimeError(f'Feature {feature} is not present ' \
+                                       'in the dataset')
                     
             # Convert feature data to numpy array to compute statistics.
             features_numpy = df[features].to_numpy() 
@@ -541,7 +542,8 @@ class ConjunctionEventsDataset(EventsPlotting):
     # Proposed API for the pandas loader
     @staticmethod
     def from_pandas(df:pd.DataFrame, group_events_by:str,
-        df_to_ccsds_name_mapping:dict = None, dropna:bool = True, 
+        df_to_ccsds_name_mapping:dict = None, dropna:bool = True,
+        num_events:int = None, 
         date_format:str='%Y-%m-%d %H:%M:%S.%f') -> ConjunctionEventsDataset:
         """Import Conjunction Events Dataset from pandas DataFrame.
 
@@ -580,17 +582,24 @@ class ConjunctionEventsDataset(EventsPlotting):
         print(f'Grouped into {len(df_events)} event(s) ' + \
               f'by {group_events_by} column.')
         
+        # Get number of events to import from Kelvins dataset.
+        num_events = len(df_events) if num_events is None \
+            else min(num_events, len(df_events))
+        
         # Initialize events list.
         events = []
 
         # Initialize counter and progress bar object
         n = 0
-        pb_events = utils.ProgressBar(iterations = range(len(df_events)),
+        pb_events = utils.ProgressBar(iterations = range(num_events),
             title = 'PANDAS DATAFRAME -> CONJUNCTION EVENTS DATASET:', 
             description='Importing Events from pandas DataFrame...')
 
         # Iterate over all events
         for event_id, rows in df_events.items():
+
+            # Stop loop if requested number of events has been retrieved
+            if (n+1) > num_events: break
         
             n += 1
             
@@ -768,15 +777,23 @@ class ConjunctionEventsDataset(EventsPlotting):
         # Remove any columns and rows containing NaN values.
         df = df.dropna(axis=1)
 
-        # Return only numeric inputs if required.
-        if only_numeric:
-            df = df.select_dtypes(include=['int', 'float64', 'float32'])
+        # Get filter to get features from ccsds feautres.
+        ccsds_filter = {'obligatory':True}
+        if only_numeric: ccsds_filter.update({'dtype':['int', 'float']})
 
-        # Get all columns except from this list.
-        columns_excluded = ['__DAYS_TO_TCA', '__RISK', '__MAX_RISK_ESTIMATE', 
-                            '__MAX_RISK_SCALING']
+        ccsds_features = ccsds.get_features(only_names = True, 
+                            include_object_preffix=True, 
+                            **ccsds_filter)
 
-        features = [f for f in list(df.columns) if not f in columns_excluded]
+        # # Return only numeric inputs if required.
+        # if only_numeric:
+        #     df = df.select_dtypes(include=['int', 'float64', 'float32'])
+
+        # # Get all columns except from this list.
+        # columns_excluded = ['__DAYS_TO_TCA', '__RISK', '__MAX_RISK_ESTIMATE', 
+        #                     '__MAX_RISK_SCALING']
+
+        features = [f for f in list(df.columns) if f in ccsds_features]
 
         return features
 
@@ -955,7 +972,7 @@ class ConjunctionEventsDataset(EventsPlotting):
         else:
             event_lengths = list(map(len, self._events))
             return f'ConjunctionEventsDataset(Events: {len(self._events)} | ' + \
-                   f'CDMs per event: ' + \
+                   f'CDMs/Event: ' + \
                    f'{min(event_lengths)} (min), ' + \
                    f'{max(event_lengths)} (max), ' + \
                    f'{sum(event_lengths)/len(event_lengths):.2f} (mean))'
