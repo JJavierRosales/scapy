@@ -85,7 +85,8 @@ def get_kelvins_data(data:str, date_tca:datetime = None,
     # Check if file already exists.
     if os.path.exists(filepath) and not overwrite: 
         if return_ced:
-            events = CED.from_pandas(df = pd.read_csv(filepath), 
+            events = CED.from_pandas(df = pd.read_csv(filepath),
+                                     num_events = num_events, 
                                      group_events_by = '__EVENT_ID')
             return filepath, events
         else:
