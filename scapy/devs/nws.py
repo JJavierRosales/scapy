@@ -10,7 +10,7 @@ import torch.nn as nn
 import sys
 sys.path.append("..")
 
-import scapy.layers
+import scapy.layers as layers
 import scapy.cells as cell
 
 networks = nn.ModuleDict({})
