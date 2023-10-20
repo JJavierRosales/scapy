@@ -274,7 +274,11 @@ class ConjunctionEventForecaster(nn.Module):
 
             # Set X-axis limits.
             if process=='validation': ax.set_xlim(0, loss.index.max())
+
+        max_loss = max(max(self._learn_results[f'training_loss']),
+                       max(self._learn_results[f'validation_loss']))
         
+        ax.set_ylim(0, max_loss*1.05)
 
         # Plot learning rate if required
         if plot_lr:
@@ -297,7 +301,7 @@ class ConjunctionEventForecaster(nn.Module):
         ax.set_ylabel('MSE Loss')
 
         # Set legend and grid for better visualization.
-        ax.legend(fontsize=8)
+        if not validation_only: ax.legend(fontsize=8)
         ax.grid(True, linestyle='--')
 
         # Save figure if filepath is provided.
@@ -567,10 +571,11 @@ class ConjunctionEventForecaster(nn.Module):
                     pb_epochs.refresh(i = relative_iters, 
                                       description = description,
                                       nested_progress = True)
-                    
 
-        # Print message at the end of the mini batch.
-        pb_epochs.refresh(i = relative_iters, description = description)
+        # Print message at the end of the epochs training.
+        pb_epochs.refresh(i = relative_iters, 
+                          nested_progress = False,
+                          description = f'Validation loss = {valid_loss:6.4e}')
 
         if filepath is not None:
             print(f'\nSaving model parameters ...', end='\r')
@@ -591,7 +596,7 @@ class ConjunctionEventForecaster(nn.Module):
 
         # Check if filepath is actually only the name of the file
         if len(filepath.split('/'))==1:
-            folderpath = os.path.join(utils.cwd, 'models', 'parameters', 'cre')
+            folderpath = os.path.join(utils.cwd, 'models', 'parameters', 'cef')
 
             # Create local directory if it does not exist already.
             utils.mkdirtree(folderpath)
