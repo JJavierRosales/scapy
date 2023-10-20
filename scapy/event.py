@@ -757,11 +757,11 @@ class ConjunctionEventsDataset(EventsPlotting):
                         days_to_tca.mean(), days_to_tca.std()))
 
 
-    def common_features(self, only_numeric:bool=False) -> list:
+    def common_features(self, numeric:bool=False, categorical:bool=False) -> list:
         """Get list of features in the Conjunction Events dataset.
 
         Args:
-            only_numeric (bool, optional): Flag to determine wether only numeric 
+            numeric (bool, optional): Flag to determine wether only numeric 
             columns shall be retrieved or not. Defaults to False.
 
         Returns:
@@ -779,14 +779,17 @@ class ConjunctionEventsDataset(EventsPlotting):
 
         # Get filter to get features from ccsds feautres.
         ccsds_filter = {'obligatory':True}
-        if only_numeric: ccsds_filter.update({'dtype':['int', 'float']})
+        if numeric or categorical:
+            dtype = (['int', 'float'] if numeric else []) + \
+                    (['category'] if categorical else [])
+            ccsds_filter.update({'dtype':dtype})
 
         ccsds_features = ccsds.get_features(only_names = True, 
                             include_object_preffix=True, 
                             **ccsds_filter)
 
         # # Return only numeric inputs if required.
-        # if only_numeric:
+        # if numeric:
         #     df = df.select_dtypes(include=['int', 'float64', 'float32'])
 
         # # Get all columns except from this list.
