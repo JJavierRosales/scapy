@@ -1,3 +1,7 @@
+# Libraries used for type hinting
+from __future__ import annotations
+from typing import Union
+
 # Import utils library
 from . import utils
 
@@ -127,22 +131,22 @@ cdm_features = {
 
 
 #%% FUNCTION: get_features
-def get_features(by_cluster:bool=True, only_names:bool = False, 
-                 suffix:str=None, include_object_preffix:bool=False, 
-                 **kwfilters) -> None:
+def get_features(only_names:bool = False, suffix:str=None, 
+                 include_object_preffix:bool=False, **kwfilters) -> Union[list, dict]:
     """Get features from a global CCSDS dictionary.
 
     Args:
-        by_cluster (bool, optional): Organise by cluster ('header', 
-        'relative metadata', 'metadata', 'data'). Defaults to True.
         only_names (bool, optional): Return only feature labels. Defaults to 
         False.
         suffix (str, optional): Suffix to add to the feature labels. Defaults to 
         None.
         include_object_preffix (bool, optional): Add OBJECTID tag to the feature 
         label. Defaults to False.
-    """
 
+    Returns:
+        Union[list, dict]: List of features or dictionary of features grouped
+        by CDM data cluster.
+    """
 
     if not isinstance(kwfilters, dict): return None
 
@@ -158,7 +162,7 @@ def get_features(by_cluster:bool=True, only_names:bool = False,
 
         cluster = information['cluster']
 
-        if by_cluster and not cluster in output.keys():
+        if not cluster in output.keys():
             output[cluster] = []
 
         # Run through all filtering criterias passed with kwargs
@@ -175,7 +179,8 @@ def get_features(by_cluster:bool=True, only_names:bool = False,
         # Go to the next feature if it shall be excluded.
         if exclude: continue
 
-        if include_object_preffix and not (cluster.startswith('header') or cluster.startswith('relative')):
+        if include_object_preffix and not \
+           (cluster.startswith('header') or cluster.startswith('relative')):
             for o in [1, 2]:
                 features.append(f'OBJECT{o}_{feature}')
                 output[cluster].append(f'OBJECT{o}_{feature}')
