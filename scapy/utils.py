@@ -829,6 +829,39 @@ def mape(output:torch.Tensor, target:torch.Tensor,
     
     return float(torch.mean(torch.abs((target - output) / \
                                 torch.add(target, epsilon))*100))
+
+#%% FUNCTION: mspe
+def WAMSELoss(output:torch.Tensor, target:torch.Tensor, 
+         c_mse:float = 0.5, f_mse:float = 2.0) -> torch.Tensor:
+    """Compute Mean Squared Percentage Error.
+
+    Args:
+        output (torch.Tensor): Predicted values.
+        target (torch.Tensor): True values.
+        c_mse (float, 1/2): Higher values of this constant 
+        increase loss resulting from low values of targets. Defaults to 0.5.
+        f_mse (float, 2.0): Higher values of this constant increase 
+        penalisation factor of higher MSEs for the same value of targets. (i.e. 
+        a value of 2 would multiply by 2 the MSE for the minimum target value). 
+        Defaults to 2.0.
+
+    Returns:
+        torch.Tensor: Loss tensor.
+    """
+
+    def penaliser(target, f_mse=30, c_mse=0.5):
+
+        if isinstance(target, torch.Tensor):
+            p = (2/(1+torch.exp(-target*c_mse))*(f_mse-1)+1.0)
+        elif isinstance(target, np.ndarray):
+            p = (2/(1+np.exp(-target*c_mse))*(f_mse-1)+1.0)
+
+        return p
+
+    se = (target - output)**2
+    
+    return torch.mean(se*penaliser(target))
+
 #%% FUNCTION: pocid
 def pocid(output:torch.Tensor, target:torch.Tensor) -> float:
     """Compute Prediction Of Change In Direction.

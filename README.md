@@ -30,7 +30,9 @@ Get started using the library with the following Jupyter notebooks:
  - [Generate synthetic CDM data](notebooks/users/03_get_started_sdg.ipynb)
 
 ## To-Do
- - 
+ - Method `evaluate()`  for collision risk evaluation. 
+ - Section on how to use CRE to evaluate conjunctions in users notebook.
+ - Learning rate scheduler for models training.
  - Python package installer.
  - Docker container.
  - ...

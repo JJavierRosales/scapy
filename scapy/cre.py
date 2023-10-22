@@ -285,6 +285,7 @@ class CollisionRiskEvaluator(nn.Module):
             self.criterion = nn.CrossEntropyLoss(weight = self.class_weights)
         else:
             self.criterion = nn.MSELoss()
+            # self.criterion = utils.WAMSELoss
 
 
         # Check if the same model already exists. If it does, load model 
@@ -508,7 +509,8 @@ class CollisionRiskEvaluator(nn.Module):
             if not hasattr(self, '_device'):
                 self._device = torch.device('cpu')
 
-    def test(self, data:TensorDataset, test_batch_size:int=None, as_dataframe:bool=False) -> Union[dict, pd.DataFrame]:
+    def test(self, data:TensorDataset, test_batch_size:int=None, 
+             as_dataframe:bool=False) -> Union[dict, pd.DataFrame]:
         """Compute loss on a test set of events using the trained model.
 
         Args:
