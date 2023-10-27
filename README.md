@@ -19,7 +19,7 @@ A Machine learning library developed in Python library for ***Spacecraft Conjunc
 
 ## License
 
-ScaPy is distributed under the [GNU General Public License version 3](LICENSE.md), whose terms are included in this repository.
+ScaPy is distributed under the [GNU General Public License version 3](LICENSE), whose terms are included in this repository.
 
 
 ## Installation
