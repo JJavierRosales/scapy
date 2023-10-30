@@ -10,7 +10,6 @@ import math
 import warnings
 import time
 import scipy.stats as st
-from typing import Union
 
 
 from sklearn.linear_model import LinearRegression
@@ -33,9 +32,170 @@ import json
 from pathlib import Path
 import os
 foldername = 'scapy'
-cwd = str(Path(os.getcwd()[:os.getcwd().index(foldername)+len(foldername)]))
 
+CWD = str(Path(os.getcwd()[:os.getcwd().index(foldername)+len(foldername)]))
 
+#%%CLASS: CosineWarmupScheduler
+# https://github.com/pytorch/pytorch/blob/main/torch/optim/lr_scheduler.py
+class CustomScheduler(torch.optim.lr_scheduler._LRScheduler):
+
+    def __init__(self, optimizer:torch.optim.Optimizer, scheduler:str='time', 
+                 warmup_epochs:int = 0, show_warnings:bool=False, 
+                 **kwargs) -> None:
+        """Initialise learning rate scheduler
+
+        Args:
+            optimizer (optim.Optimizer): Optimisation algorithm (SGD, Adam, ...)
+            scheduler (str, optional): Name of the scheduler to use: 'cosine', 
+            'time', 'exponential', 'step' or 'linear'. Defaults to 'time'.
+            warmup_epochs (int, optional): Number of warmup epochs. Defaults to 
+            0.
+            show_warnings (bool, optional): Show warnings. Defaults to False.
+
+        Raises:
+            ValueError: Scheduler parameter invalid.
+        """
+        
+        # Define default values per scheduler.
+        defaults = {'cosine':       {'max_epochs':20},
+                    'time':         {'factor':2e-3, 'power':3},
+                    'exponential':  {'factor':0.1, 'power':1},
+                    'step':         {'drop_rate':0.5, 'epochs_step':5},
+                    'linear':       {'factor':1, 'max_epochs':30, 'power':4}}
+
+        # Check if scheduler chosen by the user is correct
+        schedulers = list(defaults.keys())
+
+        if not scheduler in schedulers:
+            raise ValueError(f"Scheduler '{scheduler}' invalid. Parameter "
+                             f"can only be one of the following: "
+                             f"{', '.join(schedulers)}.")
+        
+        # Get name of scheduler and list of arguments required.
+        self.scheduler = scheduler
+        self.warmup_epochs = warmup_epochs
+        args_required = list(defaults[self.scheduler].keys())
+        args_values = defaults[self.scheduler]
+
+        # Iterate over all arguments required for the scheduler chosen.
+        for arg in args_required:
+            # If it is not provided
+            if arg not in kwargs.keys():
+                if show_warnings:
+                    warnings.warn(f"Parameter '{arg}' not provided. " + \
+                                f"Using default value ({args_values[arg]}).")
+            else:
+                # Change default value with the value passed by the user.
+                args_values[arg] = kwargs[arg]
+
+            # Add keyword arguments
+            setattr(self, arg, args_values[arg])
+
+        super().__init__(optimizer)
+
+    def get_lr(self) -> list:
+        """Get learning rates.
+
+        Returns:
+            list: New base learning rates list.
+        """
+
+        # Get new learning rate factor from the last computed learning rate by 
+        # current scheduler.
+        lr_factor = self.get_lr_factor(epoch=self.last_epoch)
+
+        # Return new list of learning rates using the new learning factor and 
+        # the initial learning rate.
+        return [base_lr * lr_factor for base_lr in self.base_lrs]
+
+    def get_lr_factor(self, epoch:int) -> float:
+        """Get learning rate factor.
+
+        Args:
+            epoch (int): Epoch of training.
+
+        Returns:
+            float: Learning rate factor.
+        """
+
+        if self.scheduler=='cosine':
+            # Get learning factor using cosine trigonometric function.
+            if epoch > self.max_epochs: epoch = self.max_epochs
+
+            lr_factor = 0.5 * (1 + np.cos(np.pi * epoch / self.max_epochs))
+
+        elif self.scheduler=='step':
+            lr_factor = math.pow(self.drop_rate, 
+                                 math.floor(epoch/self.epochs_step))
+        elif self.scheduler=='time':
+            lr_factor = 1 / (1 + self.factor * math.pow(epoch, self.power))
+        elif self.scheduler=='exponential':
+            lr_factor = np.exp(-self.factor*math.pow(epoch, self.power))
+        elif self.scheduler=='linear':
+
+            if epoch > self.max_epochs/self.factor:
+                epoch = self.max_epochs/self.factor
+
+            lr_factor = math.pow(1 - self.factor * \
+                                 (epoch / self.max_epochs), self.power)
+
+        # Implement warmup adaptation to the cosine evolution of the learning 
+        # rate. This adaptation is gradual from 0 to 100% the cosine function 
+        # function when epoch = warmup_epochs.
+        if self.warmup_epochs > 0 and epoch <= self.warmup_epochs:
+            lr_factor *= epoch / self.warmup_epochs
+
+        return lr_factor
+    
+    def plot_lr_factor(self, epochs:int, figsize:tuple = (8, 3), 
+                       figtitle:str = None, filepath:str = None, 
+                       legend:bool = False, ax:plt.Axes = None, 
+                       return_ax:bool = False) -> Union[None, plt.Axes]:
+        """Plot learning rate factor.
+
+        Args:
+            epochs (int): Number of epochs.
+            figsize (tuple, optional): Figure size. Defaults to (8, 3).
+            figtitle (str, optional): Figure title. Defaults to None.
+            filepath (str, optional): File path. Defaults to None.
+            legend (bool, optional): Show legend. Defaults to False.
+            ax (plt.Axes, optional): Axes object. Defaults to None.
+            return_ax (bool, optional): Return axes object. Defaults to False.
+
+        Returns:
+            Union[None, plt.Axes]: Axes object if return_ax=True.
+        """
+
+        # Plotting
+        epochs = list(range(epochs))
+        factors = [self.get_lr_factor(e) for e in epochs]
+
+        if ax is None: fig, ax = plt.subplots(figsize = figsize)
+
+        ax.plot(epochs, factors, label=self.scheduler.capitalize())
+        ax.set_ylabel("Learning rate factor")
+        ax.set_xlabel("Epochs")
+        if figtitle is not None:
+            ax.set_title(figtitle)
+        else:
+            ax.set_title("Learning rate evolution")
+
+        ax.grid(True, linestyle='--', color='gray')
+        ax.set_xlim(0, max(epochs))
+        ax.set_ylim(0, 1)
+        ax.set_xticks(np.arange(max(epochs)+2,step=2))
+
+        # Plot legend
+        if legend: ax.legend(fontsize = 8)
+
+        # Save figure if filepath is provided.
+        if filepath is not None:
+            print('Plotting to file: {}'.format(filepath))
+            plt.savefig(filepath, bbox_inches='tight')
+
+        # Return axes object if required.
+        if return_ax: 
+            return ax
 #%% FUNCTION: normalise_cfm
 def normalise_cfm(tp:int, fp:int, fn:int, tn:int, 
                   normalize:str='cols', print_cf:bool=False) -> tuple:
